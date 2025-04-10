@@ -1,0 +1,89 @@
+{
+    "distributions": {
+        "original_id": {
+            "median": 7312832189.0,
+            "mad": 2934181.0,
+            "iqr": 6993848.0,
+            "skewness": -1.654173247001963,
+            "kurtosis": 21.316484182328686,
+            "shapiro_p": 3.835941535916021e-54
+        },
+        "price": {
+            "median": 14995.0,
+            "mad": 9000.0,
+            "iqr": 19995.0,
+            "skewness": 252.9305096636901,
+            "kurtosis": 67211.00340544904,
+            "shapiro_p": 8.835921405985691e-96
+        },
+        "year": {
+            "median": 2013.0,
+            "mad": 4.0,
+            "iqr": 9.0,
+            "skewness": -0.9191828888911553,
+            "kurtosis": 0.5670757995664695,
+            "shapiro_p": 5.4890227401648215e-43
+        },
+        "odometer": {
+            "median": 88000.0,
+            "mad": 48555.0,
+            "iqr": 96946.0,
+            "skewness": 45.24754795567833,
+            "kurtosis": 2762.622179685243,
+            "shapiro_p": 2.086863556059854e-63
+        },
+        "latitude": {
+            "median": 39.555745,
+            "mad": 3.2953100000000006,
+            "iqr": 7.076931000000002,
+            "skewness": -0.2370344849172568,
+            "kurtosis": 6.076485025794064,
+            "shapiro_p": 6.184392264252553e-40
+        },
+        "longitude": {
+            "median": -86.28,
+            "mad": 10.14,
+            "iqr": 31.622497999999993,
+            "skewness": -0.7630322518994783,
+            "kurtosis": 1.0171562038747135,
+            "shapiro_p": 6.293283324183998e-52
+        },
+        "vehicle_age": {
+            "median": 11.0,
+            "mad": 4.0,
+            "iqr": 9.0,
+            "skewness": 0.9191828888911503,
+            "kurtosis": 0.5670757995664615,
+            "shapiro_p": 1.2015932484690398e-42
+        }
+    },
+    "outliers_count": "7668",
+    "outliers_percentage": 2.4892467009690145,
+    "imputation_statistics": {
+        "vin": {
+            "missing_before": 114077,
+            "missing_after": 0,
+            "imputation_method": "mode"
+        },
+        "image_url": {
+            "missing_before": 58,
+            "missing_after": 0,
+            "imputation_method": "mode"
+        },
+        "description": {
+            "missing_before": 60,
+            "missing_after": 0,
+            "imputation_method": "mode"
+        },
+        "county": {
+            "missing_before": 308045,
+            "missing_after": 308045,
+            "imputation_method": "mode"
+        },
+        "posting_date": {
+            "missing_before": 58,
+            "missing_after": 0,
+            "imputation_method": "mode"
+        }
+    }
+}

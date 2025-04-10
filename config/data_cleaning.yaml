@@ -1,0 +1,83 @@
+data_quality:
+  validation_rules:
+    price:
+      min: 100
+      max: 1000000
+      outlier_std: 3
+    year:
+      min: 1900
+      max: 2024
+      outlier_std: 3
+    odometer:
+      min: 0
+      max: 1000000
+      outlier_std: 3
+  
+  categorical_mappings:
+    manufacturer:
+      standardization: lower
+      aliases:
+        "vw": "volkswagen"
+        "chevy": "chevrolet"
+        "mercedes": "mercedes-benz"
+        "infinity": "infiniti"
+    
+    condition:
+      standardization: lower
+      valid_values:
+        - "new"
+        - "like new"
+        - "excellent"
+        - "good"
+        - "fair"
+        - "salvage"
+    
+    fuel:
+      standardization: lower
+      valid_values:
+        - "gas"
+        - "diesel"
+        - "hybrid"
+        - "electric"
+        - "other"
+    
+    transmission:
+      standardization: lower
+      valid_values:
+        - "manual"
+        - "automatic"
+        - "other"
+
+monitoring:
+  metrics_export:
+    enabled: true
+    format: json
+    path: "metrics/{date}/cleaning_metrics.json"
+  
+  drift_detection:
+    enabled: true
+    reference_data: "data/reference/used_cars_reference.parquet"
+    metrics:
+      - "price_mean"
+      - "price_std"
+      - "year_distribution"
+      - "manufacturer_distribution"
+    
+  alerts:
+    email_enabled: false
+    slack_enabled: false
+
+storage:
+  raw_data: "data/raw"
+  cleansed_data: "data/cleansed"
+  staging_data: "data/staging"
+  reference_data: "data/reference"
+  metrics: "metrics"
+  reports: "reports"
+
+database:
+  schema: "public"
+  tables:
+    cars: "used_cars"
+    metrics: "data_quality_metrics"
+    drift: "data_drift_metrics" 

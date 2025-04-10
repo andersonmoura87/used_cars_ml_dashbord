@@ -146,4 +146,54 @@ venv.bak/
 local.properties
 .settings/
 .loadpath
-.recommenders 
+.recommenders
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# PyCharm
+.idea/
+
+# Environment
+.env
+.venv
+env/
+venv/
+ENV/
+
+# Data
+data/raw/*
+data/processed/*
+data/interim/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+!data/interim/.gitkeep
+
+# Cache
+cache/
+__pycache__/
+.pytest_cache/
+
+# Logs
+logs/
+*.log
+
+# Model files
+*.pkl
+*.h5
+*.joblib
+models/*.pkl
+models/*.h5
+models/*.joblib
+
+# Metrics and results
+metrics/*.json
+metrics/*.csv
+
+# Docker
+.docker/
+
+# System Files
+.DS_Store
+Thumbs.db 

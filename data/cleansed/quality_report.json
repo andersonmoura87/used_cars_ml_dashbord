@@ -1,0 +1,180 @@
+{
+  "timestamp": "2025-04-07T22:00:20.887580",
+  "n_rows": 426880,
+  "n_columns": 26,
+  "memory_usage": 4255.723086357117,
+  "null_counts": {
+    "id": 0,
+    "url": 0,
+    "region": 0,
+    "region_url": 0,
+    "price": 36275,
+    "year": 1205,
+    "manufacturer": 17646,
+    "model": 5278,
+    "condition": 174104,
+    "cylinders": 177678,
+    "fuel": 3013,
+    "odometer": 4976,
+    "title_status": 8242,
+    "transmission": 2556,
+    "VIN": 161042,
+    "drive": 130567,
+    "size": 306361,
+    "type": 92858,
+    "paint_color": 130203,
+    "image_url": 68,
+    "description": 70,
+    "county": 426880,
+    "state": 0,
+    "lat": 6549,
+    "long": 6549,
+    "posting_date": 68
+  },
+  "column_types": {
+    "id": "int64",
+    "url": "object",
+    "region": "object",
+    "region_url": "object",
+    "price": "float64",
+    "year": "float64",
+    "manufacturer": "object",
+    "model": "object",
+    "condition": "object",
+    "cylinders": "object",
+    "fuel": "object",
+    "odometer": "float64",
+    "title_status": "object",
+    "transmission": "object",
+    "VIN": "object",
+    "drive": "object",
+    "size": "object",
+    "type": "object",
+    "paint_color": "object",
+    "image_url": "object",
+    "description": "object",
+    "county": "float64",
+    "state": "object",
+    "lat": "float64",
+    "long": "float64",
+    "posting_date": "object"
+  },
+  "numeric_stats": {
+    "price": {
+      "mean": 19094.758431151677,
+      "std": 16257.149690374785,
+      "min": 100.0,
+      "max": 1000000.0
+    },
+    "year": {
+      "mean": 2011.23519116697,
+      "std": 9.452119581503126,
+      "min": 1900.0,
+      "max": 2022.0
+    },
+    "odometer": {
+      "mean": 92664.22269521028,
+      "std": 71497.82706558498,
+      "min": 0.0,
+      "max": 1000000.0
+    }
+  },
+  "categorical_stats": {
+    "manufacturer": {
+      "unique_values": 42,
+      "top_values": {
+        "ford": 70985,
+        "chevrolet": 55064,
+        "toyota": 34202,
+        "honda": 21269,
+        "nissan": 19067
+      }
+    },
+    "model": {
+      "unique_values": 28575,
+      "top_values": {
+        "f-150": 8075,
+        "silverado 1500": 5142,
+        "1500": 4211,
+        "camry": 3139,
+        "silverado": 3024
+      }
+    },
+    "condition": {
+      "unique_values": 6,
+      "top_values": {
+        "good": 121456,
+        "excellent": 101467,
+        "like new": 21178,
+        "fair": 6769,
+        "new": 1305
+      }
+    },
+    "fuel": {
+      "unique_values": 5,
+      "top_values": {
+        "gas": 356209,
+        "other": 30728,
+        "diesel": 30062,
+        "hybrid": 5170,
+        "electric": 1698
+      }
+    },
+    "title_status": {
+      "unique_values": 6,
+      "top_values": {
+        "clean": 405117,
+        "rebuilt": 7219,
+        "salvage": 3868,
+        "lien": 1422,
+        "missing": 814
+      }
+    },
+    "transmission": {
+      "unique_values": 3,
+      "top_values": {
+        "automatic": 336524,
+        "other": 62682,
+        "manual": 25118
+      }
+    },
+    "drive": {
+      "unique_values": 3,
+      "top_values": {
+        "4wd": 131904,
+        "fwd": 105517,
+        "rwd": 58892
+      }
+    },
+    "type": {
+      "unique_values": 13,
+      "top_values": {
+        "sedan": 87056,
+        "suv": 77284,
+        "pickup": 43510,
+        "truck": 35279,
+        "other": 22110
+      }
+    },
+    "paint_color": {
+      "unique_values": 12,
+      "top_values": {
+        "white": 79285,
+        "black": 62861,
+        "silver": 42970,
+        "blue": 31223,
+        "red": 30473
+      }
+    },
+    "state": {
+      "unique_values": 51,
+      "top_values": {
+        "ca": 50614,
+        "fl": 28511,
+        "tx": 22945,
+        "ny": 19386,
+        "oh": 17696
+      }
+    }
+  }
+}
