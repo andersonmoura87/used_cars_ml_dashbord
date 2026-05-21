@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from ..database import get_db
-from ..models import Car
+from ..models import CarORM
 from sqlalchemy import func
 import logging
 
@@ -22,25 +22,25 @@ async def get_installment_analysis(
     """
     try:
         query = db.query(
-            func.avg(Car.monthly_payment).label("avg_monthly"),
-            func.min(Car.monthly_payment).label("min_monthly"),
-            func.max(Car.monthly_payment).label("max_monthly"),
-            func.avg(Car.down_payment).label("avg_down"),
-            func.min(Car.down_payment).label("min_down"),
-            func.max(Car.down_payment).label("max_down"),
-            func.avg(Car.installments).label("avg_term"),
-            func.min(Car.installments).label("min_term"),
-            func.max(Car.installments).label("max_term")
-        ).filter(Car.has_installments == True)
+            func.avg(CarORM.monthly_payment).label("avg_monthly"),
+            func.min(CarORM.monthly_payment).label("min_monthly"),
+            func.max(CarORM.monthly_payment).label("max_monthly"),
+            func.avg(CarORM.down_payment).label("avg_down"),
+            func.min(CarORM.down_payment).label("min_down"),
+            func.max(CarORM.down_payment).label("max_down"),
+            func.avg(CarORM.installments).label("avg_term"),
+            func.min(CarORM.installments).label("min_term"),
+            func.max(CarORM.installments).label("max_term")
+        ).filter(CarORM.has_installments == True)
 
         if min_price:
-            query = query.filter(Car.price >= min_price)
+            query = query.filter(CarORM.price >= min_price)
         if max_price:
-            query = query.filter(Car.price <= max_price)
+            query = query.filter(CarORM.price <= max_price)
         if manufacturer:
-            query = query.filter(Car.manufacturer.ilike(f"%{manufacturer}%"))
+            query = query.filter(CarORM.manufacturer.ilike(f"%{manufacturer}%"))
         if state:
-            query = query.filter(Car.state.ilike(f"%{state}%"))
+            query = query.filter(CarORM.state.ilike(f"%{state}%"))
 
         result = query.first()
 
@@ -77,20 +77,20 @@ async def get_manufacturer_financing_comparison(
     """
     try:
         query = db.query(
-            Car.manufacturer,
-            func.count(Car.id).label("total_cars"),
-            func.count(Car.id).filter(Car.has_installments == True).label("financed_cars"),
-            func.avg(Car.monthly_payment).filter(Car.has_installments == True).label("avg_monthly"),
-            func.avg(Car.down_payment).filter(Car.has_installments == True).label("avg_down"),
-            func.avg(Car.installments).filter(Car.has_installments == True).label("avg_term")
-        ).group_by(Car.manufacturer)
+            CarORM.manufacturer,
+            func.count(CarORM.id).label("total_cars"),
+            func.count(CarORM.id).filter(CarORM.has_installments == True).label("financed_cars"),
+            func.avg(CarORM.monthly_payment).filter(CarORM.has_installments == True).label("avg_monthly"),
+            func.avg(CarORM.down_payment).filter(CarORM.has_installments == True).label("avg_down"),
+            func.avg(CarORM.installments).filter(CarORM.has_installments == True).label("avg_term")
+        ).group_by(CarORM.manufacturer)
 
         if manufacturers:
-            query = query.filter(Car.manufacturer.in_(manufacturers))
+            query = query.filter(CarORM.manufacturer.in_(manufacturers))
         if min_year:
-            query = query.filter(Car.year >= min_year)
+            query = query.filter(CarORM.year >= min_year)
         if max_year:
-            query = query.filter(Car.year <= max_year)
+            query = query.filter(CarORM.year <= max_year)
 
         results = query.all()
         
@@ -124,15 +124,15 @@ async def get_price_range_financing_analysis(db: Session = Depends(get_db)):
         results = []
         for min_price, max_price, range_label in ranges:
             query = db.query(
-                func.count(Car.id).label("total_cars"),
-                func.count(Car.id).filter(Car.has_installments == True).label("financed_cars"),
-                func.avg(Car.monthly_payment).filter(Car.has_installments == True).label("avg_monthly"),
-                func.avg(Car.down_payment).filter(Car.has_installments == True).label("avg_down"),
-                func.avg(Car.installments).filter(Car.has_installments == True).label("avg_term")
-            ).filter(Car.price >= min_price)
+                func.count(CarORM.id).label("total_cars"),
+                func.count(CarORM.id).filter(CarORM.has_installments == True).label("financed_cars"),
+                func.avg(CarORM.monthly_payment).filter(CarORM.has_installments == True).label("avg_monthly"),
+                func.avg(CarORM.down_payment).filter(CarORM.has_installments == True).label("avg_down"),
+                func.avg(CarORM.installments).filter(CarORM.has_installments == True).label("avg_term")
+            ).filter(CarORM.price >= min_price)
             
             if max_price != float('inf'):
-                query = query.filter(Car.price < max_price)
+                query = query.filter(CarORM.price < max_price)
                 
             result = query.first()
             

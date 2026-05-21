@@ -114,48 +114,5 @@ def main():
         logger.error(f"Database migration failed: {str(e)}")
         sys.exit(1)
 
-def run_migration():
-    """Run the database migration."""
-    try:
-        # Create database engine
-        engine = create_engine(DATABASE_URL)
-        logger.info("Database connection established")
-        
-        # Read migration SQL file
-        migration_file = 'sql/migrations/add_installment_columns.sql'
-        logger.info(f"Reading migration file: {migration_file}")
-        
-        with open(migration_file, 'r', encoding='utf-8-sig') as f:
-            migration_sql = f.read()
-            
-        # Execute migration
-        with engine.connect() as conn:
-            # Set client encoding to UTF-8
-            conn.execute(text("SET client_encoding TO 'UTF8';"))
-            
-            # Split SQL into individual statements
-            statements = [stmt.strip() for stmt in migration_sql.split(';') if stmt.strip()]
-            
-            # Execute each statement
-            for statement in statements:
-                try:
-                    logger.info(f"Executing: {statement[:100]}...")
-                    conn.execute(text(statement))
-                except Exception as e:
-                    # Log the error but continue with other statements
-                    if "already exists" in str(e):
-                        logger.warning(f"Object already exists: {str(e)}")
-                    else:
-                        logger.error(f"Error executing statement: {str(e)}")
-                        raise
-            
-            conn.commit()
-            
-        logger.info("Migration completed successfully")
-        
-    except Exception as e:
-        logger.error(f"Error during migration: {str(e)}")
-        raise
-
 if __name__ == "__main__":
-    run_migration() 
+    main() 

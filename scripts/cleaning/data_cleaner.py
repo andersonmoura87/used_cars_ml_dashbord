@@ -32,7 +32,7 @@ class DataCleaner:
             'manufacturer', 'model', 'condition', 'fuel', 'title_status',
             'transmission', 'drive', 'type', 'paint_color', 'state'
         ])
-        self.date_columns = self.config.get('date_columns', ['date_posted'])
+        self.date_columns = self.config.get('date_columns', ['posting_date'])
         
         # Limites para validação
         self.validation_rules = self.config.get('validation_rules', {

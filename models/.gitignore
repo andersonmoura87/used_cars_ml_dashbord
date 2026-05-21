@@ -1,0 +1,14 @@
+# Artefatos de modelo — não versionar binários grandes
+*.joblib
+*.pkl
+*.pickle
+*.pt
+*.pth
+*.h5
+*.onnx
+
+# Manter apenas metadados e ponteiro latest
+!*.json
+!.gitkeep
+!.gitignore
+!latest.txt

@@ -1,5 +1,5 @@
 # Use uma imagem base do Python
-FROM python:3.8-slim
+FROM python:3.11-slim
 
 # Definir variáveis de ambiente
 ENV PYTHONUNBUFFERED=1 \
@@ -21,11 +21,14 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # Copiar arquivos de requisitos
-COPY requirements.txt requirements-dev.txt ./
+COPY requirements-core.txt requirements.txt ./
 
-# Instalar dependências Python
-RUN pip install --no-cache-dir -r requirements.txt \
-    && pip install --no-cache-dir -r requirements-dev.txt
+# 1ª camada: dependências core (pandas, sklearn, fastapi, mlflow…)
+# Cache separado para que mudanças em deps secundárias não reiniciem este passo
+RUN pip install --no-cache-dir --timeout 300 --retries 5 -r requirements-core.txt
+
+# 2ª camada: dependências restantes (prophet, statsmodels, reportlab…)
+RUN pip install --no-cache-dir --timeout 300 --retries 5 -r requirements.txt
 
 # Copiar o código fonte
 COPY . .

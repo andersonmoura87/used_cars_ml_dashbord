@@ -111,7 +111,7 @@ class PostgresLoader:
         try:
             # Se não recebeu DataFrame, lê do arquivo
             if df is None:
-                if self.input_path.endswith('.parquet'):
+                if self.input_path.suffix == '.parquet':
                     df = pd.read_parquet(self.input_path)
                 else:
                     df = pd.read_csv(self.input_path)

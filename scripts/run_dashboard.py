@@ -1,23 +1,34 @@
-import os
+#!/usr/bin/env python
+"""
+Inicia o dashboard Streamlit unificado.
+
+Uso:
+    python scripts/run_dashboard.py
+    python scripts/run_dashboard.py --port 8502
+"""
 import subprocess
+import sys
 from pathlib import Path
 
-def main():
-    """Função principal para executar o dashboard"""
-    try:
-        # Criar diretório de logs se não existir
-        Path("logs").mkdir(exist_ok=True)
-        
-        # Criar diretório de dados processados se não existir
-        Path("data/processed").mkdir(parents=True, exist_ok=True)
-        
-        # Executar o dashboard
-        subprocess.run(["streamlit", "run", "scripts/market_dashboard.py"], check=True)
-        
-    except subprocess.CalledProcessError as e:
-        print(f"Erro ao executar o dashboard: {e}")
-    except Exception as e:
-        print(f"Erro inesperado: {e}")
+ROOT = Path(__file__).parent.parent
+HOME = ROOT / "dashboard" / "Home.py"
+
+
+def main() -> None:
+    port = "8501"
+    for i, arg in enumerate(sys.argv[1:]):
+        if arg in ("--port", "-p") and i + 1 < len(sys.argv[1:]):
+            port = sys.argv[i + 2]
+
+    cmd = [
+        sys.executable, "-m", "streamlit", "run",
+        str(HOME),
+        "--server.port", port,
+        "--server.headless", "true",
+    ]
+    print(f"Iniciando dashboard em http://localhost:{port}")
+    subprocess.run(cmd, check=True)
+
 
 if __name__ == "__main__":
-    main() 
+    main()

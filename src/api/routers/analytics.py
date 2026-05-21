@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from ..database import get_db
-from ..models import Car, ManufacturerStats, StateStats, YearStats
+from ..models import CarORM, ManufacturerStats, StateStats, YearStats
 from sqlalchemy import func
 import logging
 
@@ -26,28 +26,28 @@ async def get_manufacturer_stats(
         if min_year or max_year or min_price or max_price:
             # If filters are applied, we need to calculate stats dynamically
             subquery = db.query(
-                Car.manufacturer,
-                func.count(Car.id).label("total_listings"),
-                func.avg(Car.price).label("avg_price"),
-                func.min(Car.price).label("min_price"),
-                func.max(Car.price).label("max_price"),
-                func.avg(Car.year).label("avg_year"),
-                func.count(Car.id).filter(Car.has_installments == True).label("total_financed"),
-                func.avg(Car.monthly_payment).filter(Car.has_installments == True).label("avg_monthly_payment"),
-                func.avg(Car.down_payment).filter(Car.has_installments == True).label("avg_down_payment"),
-                func.avg(Car.installments).filter(Car.has_installments == True).label("avg_installments")
+                CarORM.manufacturer,
+                func.count(CarORM.id).label("total_listings"),
+                func.avg(CarORM.price).label("avg_price"),
+                func.min(CarORM.price).label("min_price"),
+                func.max(CarORM.price).label("max_price"),
+                func.avg(CarORM.year).label("avg_year"),
+                func.count(CarORM.id).filter(CarORM.has_installments == True).label("total_financed"),
+                func.avg(CarORM.monthly_payment).filter(CarORM.has_installments == True).label("avg_monthly_payment"),
+                func.avg(CarORM.down_payment).filter(CarORM.has_installments == True).label("avg_down_payment"),
+                func.avg(CarORM.installments).filter(CarORM.has_installments == True).label("avg_installments")
             )
             
             if min_year:
-                subquery = subquery.filter(Car.year >= min_year)
+                subquery = subquery.filter(CarORM.year >= min_year)
             if max_year:
-                subquery = subquery.filter(Car.year <= max_year)
+                subquery = subquery.filter(CarORM.year <= max_year)
             if min_price:
-                subquery = subquery.filter(Car.price >= min_price)
+                subquery = subquery.filter(CarORM.price >= min_price)
             if max_price:
-                subquery = subquery.filter(Car.price <= max_price)
+                subquery = subquery.filter(CarORM.price <= max_price)
                 
-            results = subquery.group_by(Car.manufacturer).all()
+            results = subquery.group_by(CarORM.manufacturer).all()
             
             return [{
                 "manufacturer": result.manufacturer,
@@ -84,25 +84,25 @@ async def get_state_stats(
         if min_year or max_year or manufacturer:
             # If filters are applied, calculate stats dynamically
             subquery = db.query(
-                Car.state,
-                func.count(Car.id).label("total_listings"),
-                func.avg(Car.price).label("avg_price"),
-                func.min(Car.price).label("min_price"),
-                func.max(Car.price).label("max_price"),
-                func.count(Car.id).filter(Car.has_installments == True).label("total_financed"),
-                func.avg(Car.monthly_payment).filter(Car.has_installments == True).label("avg_monthly_payment"),
-                func.avg(Car.down_payment).filter(Car.has_installments == True).label("avg_down_payment"),
-                func.avg(Car.installments).filter(Car.has_installments == True).label("avg_installments")
+                CarORM.state,
+                func.count(CarORM.id).label("total_listings"),
+                func.avg(CarORM.price).label("avg_price"),
+                func.min(CarORM.price).label("min_price"),
+                func.max(CarORM.price).label("max_price"),
+                func.count(CarORM.id).filter(CarORM.has_installments == True).label("total_financed"),
+                func.avg(CarORM.monthly_payment).filter(CarORM.has_installments == True).label("avg_monthly_payment"),
+                func.avg(CarORM.down_payment).filter(CarORM.has_installments == True).label("avg_down_payment"),
+                func.avg(CarORM.installments).filter(CarORM.has_installments == True).label("avg_installments")
             )
             
             if min_year:
-                subquery = subquery.filter(Car.year >= min_year)
+                subquery = subquery.filter(CarORM.year >= min_year)
             if max_year:
-                subquery = subquery.filter(Car.year <= max_year)
+                subquery = subquery.filter(CarORM.year <= max_year)
             if manufacturer:
-                subquery = subquery.filter(Car.manufacturer.ilike(f"%{manufacturer}%"))
+                subquery = subquery.filter(CarORM.manufacturer.ilike(f"%{manufacturer}%"))
                 
-            results = subquery.group_by(Car.state).all()
+            results = subquery.group_by(CarORM.state).all()
             
             return [{
                 "state": result.state,
@@ -137,23 +137,23 @@ async def get_year_stats(
         if manufacturer or state:
             # If filters are applied, calculate stats dynamically
             subquery = db.query(
-                Car.year,
-                func.count(Car.id).label("total_listings"),
-                func.avg(Car.price).label("avg_price"),
-                func.min(Car.price).label("min_price"),
-                func.max(Car.price).label("max_price"),
-                func.count(Car.id).filter(Car.has_installments == True).label("total_financed"),
-                func.avg(Car.monthly_payment).filter(Car.has_installments == True).label("avg_monthly_payment"),
-                func.avg(Car.down_payment).filter(Car.has_installments == True).label("avg_down_payment"),
-                func.avg(Car.installments).filter(Car.has_installments == True).label("avg_installments")
+                CarORM.year,
+                func.count(CarORM.id).label("total_listings"),
+                func.avg(CarORM.price).label("avg_price"),
+                func.min(CarORM.price).label("min_price"),
+                func.max(CarORM.price).label("max_price"),
+                func.count(CarORM.id).filter(CarORM.has_installments == True).label("total_financed"),
+                func.avg(CarORM.monthly_payment).filter(CarORM.has_installments == True).label("avg_monthly_payment"),
+                func.avg(CarORM.down_payment).filter(CarORM.has_installments == True).label("avg_down_payment"),
+                func.avg(CarORM.installments).filter(CarORM.has_installments == True).label("avg_installments")
             )
             
             if manufacturer:
-                subquery = subquery.filter(Car.manufacturer.ilike(f"%{manufacturer}%"))
+                subquery = subquery.filter(CarORM.manufacturer.ilike(f"%{manufacturer}%"))
             if state:
-                subquery = subquery.filter(Car.state.ilike(f"%{state}%"))
+                subquery = subquery.filter(CarORM.state.ilike(f"%{state}%"))
                 
-            results = subquery.group_by(Car.year).order_by(Car.year.desc()).all()
+            results = subquery.group_by(CarORM.year).order_by(CarORM.year.desc()).all()
             
             return [{
                 "year": result.year,

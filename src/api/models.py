@@ -1,14 +1,14 @@
-from sqlalchemy import Column, Integer, String, Float, Boolean, Date, ForeignKey, Enum
+from sqlalchemy import Column, Integer, String, Float, Boolean, Date
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship  # noqa: F401 (available for future use)
 from datetime import date
 from typing import Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 Base = declarative_base()
 
-# SQLAlchemy Models
-class Car(Base):
+# SQLAlchemy ORM Models
+class CarORM(Base):
     __tablename__ = "cars"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -75,11 +75,11 @@ class CarBase(BaseModel):
 class CarCreate(CarBase):
     pass
 
-class Car(CarBase):
-    id: int
 
-    class Config:
-        orm_mode = True
+class CarResponse(CarBase):
+    """Pydantic response model — use this in router response_model annotations."""
+    id: int
+    model_config = ConfigDict(from_attributes=True)
 
 # Statistics Models
 class ManufacturerStats(Base):

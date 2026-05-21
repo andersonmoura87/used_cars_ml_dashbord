@@ -261,66 +261,129 @@ def calculate_total_price(price_str: str, description: str, num_installments: in
         logger.error(f"Erro ao calcular preço total: {str(e)}")
         return result
 
-def transform_data(df):
-    """Função principal de transformação dos dados."""
-    logger.info("Iniciando transformação dos dados...")
-    
+def calculate_market_statistics(df: pd.DataFrame) -> dict:
+    """
+    Calcula estatísticas de mercado segmentadas por fabricante, estado e ano.
+
+    Returns:
+        dict com chaves 'manufacturer', 'state' e 'year', cada uma contendo
+        um DataFrame de agregações prontas para carga no banco de dados.
+    """
     try:
-        # Criar cópia do DataFrame
-        df_clean = df.copy()
-        
-        # Calcular preços totais
-        logger.info("Calculando preços totais...")
-        price_info = df_clean.apply(
-            lambda row: calculate_total_price(row['price'], row.get('description', '')), 
-            axis=1
-        )
-        
-        # Adicionar colunas de preço
-        df_clean['price_original'] = price_info.apply(lambda x: x['original_price'])
-        df_clean['has_installments'] = price_info.apply(lambda x: x['has_installments'])
-        df_clean['monthly_payment'] = price_info.apply(lambda x: x['monthly_payment'])
-        df_clean['down_payment'] = price_info.apply(lambda x: x['down_payment'])
-        df_clean['installments'] = price_info.apply(lambda x: x['installments'])
-        df_clean['price'] = price_info.apply(lambda x: x['total_price'])
-        
-        # Limpar valores nulos ou zero
-        df_clean['price'] = df_clean['price'].fillna(df_clean['price_original'])
-        df_clean = df_clean[df_clean['price'] > 0]
-        
-        # Remover preços irrealistas
-        price_limits = {
-            'min': 500,  # Preço mínimo aceitável
-            'max': 1000000  # Preço máximo aceitável
+        agg_cfg = {
+            'price': ['mean', 'min', 'max', 'count'],
         }
-        
-        df_clean = df_clean[
-            (df_clean['price'] >= price_limits['min']) & 
-            (df_clean['price'] <= price_limits['max'])
-        ]
-        
-        # Calcular idade do veículo
+
+        manufacturer_stats = df.groupby('manufacturer').agg(agg_cfg).reset_index()
+        manufacturer_stats.columns = ['manufacturer', 'avg_price', 'min_price', 'max_price', 'total_listings']
+        if 'year' in df.columns:
+            manufacturer_stats['avg_year'] = df.groupby('manufacturer')['year'].mean().values
+        for col in ['has_installments', 'monthly_payment', 'down_payment', 'installments']:
+            if col in df.columns:
+                manufacturer_stats[f'avg_{col}' if col != 'has_installments' else 'total_financed'] = (
+                    df.groupby('manufacturer')[col].sum().values
+                    if col == 'has_installments'
+                    else df.groupby('manufacturer')[col].mean().values
+                )
+
+        state_stats = df.groupby('state').agg(agg_cfg).reset_index()
+        state_stats.columns = ['state', 'avg_price', 'min_price', 'max_price', 'total_listings']
+        for col in ['has_installments', 'monthly_payment', 'down_payment', 'installments']:
+            if col in df.columns:
+                state_stats[f'avg_{col}' if col != 'has_installments' else 'total_financed'] = (
+                    df.groupby('state')[col].sum().values
+                    if col == 'has_installments'
+                    else df.groupby('state')[col].mean().values
+                )
+
+        year_stats = df.groupby('year').agg(agg_cfg).reset_index()
+        year_stats.columns = ['year', 'avg_price', 'min_price', 'max_price', 'total_listings']
+        for col in ['has_installments', 'monthly_payment', 'down_payment', 'installments']:
+            if col in df.columns:
+                year_stats[f'avg_{col}' if col != 'has_installments' else 'total_financed'] = (
+                    df.groupby('year')[col].sum().values
+                    if col == 'has_installments'
+                    else df.groupby('year')[col].mean().values
+                )
+
+        return {
+            'manufacturer': manufacturer_stats,
+            'state': state_stats,
+            'year': year_stats,
+        }
+    except Exception as e:
+        logger.error(f"Erro ao calcular estatísticas segmentadas: {str(e)}")
+        raise
+
+
+def transform_data(df: pd.DataFrame):
+    """
+    Função principal de transformação dos dados.
+
+    Returns:
+        Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, dict]:
+            df_clean         — registros aprovados após limpeza
+            df_removed       — registros descartados (preço inválido/anômalo)
+            market_stats     — estatísticas de mercado (groupby manufacturer/model/year)
+            transform_metadata — métricas da etapa para auditoria
+    """
+    logger.info("Iniciando transformação dos dados...")
+
+    try:
+        transform_start = datetime.now()
+        df_input = df.copy()
+
+        # --- Enriquecimento de preço (parcelas + entrada) ---
+        logger.info("Calculando preços totais...")
+        price_info = df_input.apply(
+            lambda row: calculate_total_price(row['price'], row.get('description', '')),
+            axis=1,
+        )
+
+        df_input['price_original'] = price_info.apply(lambda x: x['original_price'])
+        df_input['has_installments'] = price_info.apply(lambda x: x['has_installments'])
+        df_input['monthly_payment'] = price_info.apply(lambda x: x['monthly_payment'])
+        df_input['down_payment'] = price_info.apply(lambda x: x['down_payment'])
+        df_input['installments'] = price_info.apply(lambda x: x['installments'])
+        df_input['price'] = price_info.apply(lambda x: x['total_price'])
+
+        df_input['price'] = df_input['price'].fillna(df_input['price_original'])
+        df_input = df_input[df_input['price'] > 0]
+
+        # --- Limpeza avançada de preço (outliers + fabricante) ---
+        df_clean, df_removed = clean_price_data(df_input)
+
+        # --- Filtros adicionais ---
         current_year = datetime.now().year
         df_clean['vehicle_age'] = current_year - df_clean['year']
-        
-        # Remover veículos muito antigos ou futuros
+
         df_clean = df_clean[
-            (df_clean['year'] >= 1950) & 
-            (df_clean['year'] <= current_year + 1)
+            (df_clean['year'] >= 1950) & (df_clean['year'] <= current_year + 1)
         ]
-        
-        # Limpar e padronizar textos
-        text_columns = ['manufacturer', 'model', 'condition', 'fuel', 'title_status', 
-                       'transmission', 'drive', 'size', 'type', 'paint_color']
-        
+
+        # --- Padronização de texto ---
+        text_columns = [
+            'manufacturer', 'model', 'condition', 'fuel', 'title_status',
+            'transmission', 'drive', 'size', 'type', 'paint_color',
+        ]
         for col in text_columns:
             if col in df_clean.columns:
-                df_clean[col] = df_clean[col].fillna('unknown')
-                df_clean[col] = df_clean[col].str.lower().str.strip()
-        
+                df_clean[col] = df_clean[col].fillna('unknown').str.lower().str.strip()
+
+        # --- Estatísticas de mercado ---
+        market_stats = calculate_market_stats(df_clean)
+
+        transform_metadata = {
+            'transform_start': transform_start.isoformat(),
+            'transform_end': datetime.now().isoformat(),
+            'input_records': len(df),
+            'output_records': len(df_clean),
+            'removed_records': len(df_removed),
+        }
+
         logger.info(f"Transformação concluída. Registros finais: {len(df_clean)}")
-        return df_clean
-        
+        return df_clean, df_removed, market_stats, transform_metadata
+
     except Exception as e:
         logger.error(f"Erro na transformação dos dados: {str(e)}")
         raise 

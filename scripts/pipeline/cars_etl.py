@@ -4,14 +4,20 @@ from datetime import timedelta, datetime
 import pandas as pd
 from pathlib import Path
 import logging
+import sys
 import yaml
 import json
 import os
+
+# Garantir que o root do projeto esteja no path
+_ROOT = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(_ROOT))
 
 # Importar classes customizadas
 from scripts.cleaning.data_cleaner import DataCleaner
 from scripts.monitoring.data_monitor import DataMonitor
 from scripts.load_to_postgres import PostgresLoader
+from src.etl.ge_validation import validate_raw, validate_clean
 
 # Configurar logging
 logging.basicConfig(level=logging.INFO)
@@ -126,6 +132,37 @@ def load_to_warehouse(df: pd.DataFrame, config: dict) -> None:
     
     logger.info("Dados carregados com sucesso no banco de dados")
 
+@task(name="ge_validate_raw")
+def ge_validate_raw_task(df: pd.DataFrame) -> bool:
+    """
+    Valida dados brutos com Great Expectations.
+
+    Falhas são logadas como warning — o pipeline NÃO é interrompido por padrão.
+    Para bloquear o pipeline em caso de falha, altere raise_on_failure=True.
+    """
+    logger.info("[GE] Iniciando validação de dados brutos (%d registros)…", len(df))
+    passed = validate_raw(df, raise_on_failure=False)
+    if not passed:
+        logger.warning(
+            "[GE] Suite 'raw_cars_suite' reportou falhas. "
+            "Verifique gx/uncommitted/validations/ para detalhes."
+        )
+    return passed
+
+
+@task(name="ge_validate_clean")
+def ge_validate_clean_task(df: pd.DataFrame) -> bool:
+    """
+    Valida dados limpos com Great Expectations.
+
+    Falhas aqui são mais críticas — dados não conformes não devem ir para o DW.
+    raise_on_failure=True interrompe o pipeline se a suite falhar.
+    """
+    logger.info("[GE] Iniciando validação de dados limpos (%d registros)…", len(df))
+    passed = validate_clean(df, raise_on_failure=True)
+    return passed
+
+
 @task
 def save_reference_data(
     df: pd.DataFrame,
@@ -148,32 +185,42 @@ def cars_etl_pipeline(
         # Carregar configurações
         config = load_config(config_path)
         
-        # Extract
+        # ── Extract ──────────────────────────────────────────────────────────
         df_raw = extract_data(config)
         raw_metrics = calculate_metrics(df_raw, "raw", config)
-        
-        # Transform
+
+        # ── Validate raw (GE) ─────────────────────────────────────────────────
+        # Falhas aqui são warnings — não interrompem o pipeline
+        raw_ge_passed = ge_validate_raw_task(df_raw)
+
+        # ── Transform ─────────────────────────────────────────────────────────
         df_clean = clean_data(df_raw, config)
         clean_metrics = calculate_metrics(df_clean, "clean", config)
-        
-        # Detect drift
+
+        # ── Validate clean (GE) ───────────────────────────────────────────────
+        # Falhas aqui interrompem o pipeline (dados não conformes não são carregados)
+        clean_ge_passed = ge_validate_clean_task(df_clean)
+
+        # ── Detect drift ──────────────────────────────────────────────────────
         drift_metrics = detect_data_drift(df_clean, config)
-        
-        # Load
+
+        # ── Load ──────────────────────────────────────────────────────────────
         load_to_warehouse(df_clean, config)
-        
-        # Save reference data if it doesn't exist
+
+        # ── Save reference data ───────────────────────────────────────────────
         reference_path = Path(config['monitoring']['drift_detection']['reference_data'])
         if not reference_path.exists():
             save_reference_data(df_clean, config)
-        
+
         logger.info("Pipeline executado com sucesso!")
-        
+
         return {
-            'status': 'success',
-            'raw_metrics': raw_metrics,
-            'clean_metrics': clean_metrics,
-            'drift_metrics': drift_metrics
+            "status": "success",
+            "raw_metrics": raw_metrics,
+            "clean_metrics": clean_metrics,
+            "drift_metrics": drift_metrics,
+            "ge_raw_passed": raw_ge_passed,
+            "ge_clean_passed": clean_ge_passed,
         }
         
     except Exception as e:

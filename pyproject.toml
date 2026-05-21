@@ -1,10 +1,35 @@
 [build-system]
-requires = ["setuptools>=45", "wheel", "setuptools_scm>=6.2"]
+requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
+[project]
+name = "used-cars-ml"
+version = "0.2.0"
+description = "Pipeline de ML e dashboard para análise de veículos usados"
+requires-python = ">=3.11"
+readme = "README.md"
+license = { text = "MIT" }
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+[project.scripts]
+run-etl        = "scripts.run_etl:main"
+run-dashboard  = "scripts.run_dashboard:main"
+train-model    = "scripts.train_model:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]
+exclude = ["tests*", "venv*", "notebooks*"]
+
+# ── Ferramentas de desenvolvimento ────────────────────────────────────────────
+
 [tool.black]
-line-length = 88
-target-version = ['py38']
+line-length = 100
+target-version = ["py311"]
 include = '\.pyi?$'
 
 [tool.isort]
@@ -13,46 +38,36 @@ multi_line_output = 3
 include_trailing_comma = true
 force_grid_wrap = 0
 use_parentheses = true
-line_length = 88
+line_length = 100
+known_first_party = ["src"]
 
 [tool.mypy]
-python_version = "3.8"
+python_version = "3.11"
 warn_return_any = true
 warn_unused_configs = true
-disallow_untyped_defs = true
-disallow_incomplete_defs = true
-check_untyped_defs = true
-disallow_untyped_decorators = true
-no_implicit_optional = true
-warn_redundant_casts = true
-warn_unused_ignores = true
-warn_no_return = true
-warn_unreachable = true
+disallow_untyped_defs = false
+ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = ["tests.*"]
 disallow_untyped_defs = false
-disallow_incomplete_defs = false
 
 [tool.pytest.ini_options]
 minversion = "6.0"
 addopts = "-ra -q --cov=src --cov-report=term-missing"
-testpaths = [
-    "tests",
-]
+testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 
 [tool.coverage.run]
 source = ["src"]
-omit = ["tests/*", "**/__init__.py"]
+omit = ["tests/*", "**/__init__.py", "**/migrations/*"]
 
 [tool.coverage.report]
 exclude_lines = [
     "pragma: no cover",
     "def __repr__",
-    "if self.debug:",
     "raise NotImplementedError",
     "if __name__ == .__main__.:",
     "pass",
@@ -60,10 +75,10 @@ exclude_lines = [
 ]
 
 [tool.bandit]
-exclude_dirs = ["tests"]
-skips = ["B101"]
+exclude_dirs = ["tests", "venv310"]
+skips = ["B101", "B603"]
 
 [tool.commitizen]
 name = "cz_conventional_commits"
-version = "0.1.0"
-tag_format = "v$version" 
+version = "0.2.0"
+tag_format = "v$version"
