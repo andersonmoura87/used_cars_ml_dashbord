@@ -5,7 +5,7 @@
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # ── Stage 1: Builder ──────────────────────────────────────────────────────────
-FROM python:3.11-slim AS builder
+FROM python:3.14-slim AS builder
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
@@ -25,7 +25,7 @@ RUN pip wheel --no-cache-dir --timeout 300 --retries 5 \
     --wheel-dir /build/wheels
 
 # ── Stage 2: Runtime ──────────────────────────────────────────────────────────
-FROM python:3.11-slim AS runtime
+FROM python:3.14-slim AS runtime
 
 LABEL org.opencontainers.image.title="used-cars-ml API"
 LABEL org.opencontainers.image.description="API + ML pipeline para análise de veículos usados"
