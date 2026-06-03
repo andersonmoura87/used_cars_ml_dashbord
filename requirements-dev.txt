@@ -1,6 +1,6 @@
 # Dependências de desenvolvimento (testes, linting, formatação)
-# Instale com: pip install -r requirements-dev.txt
--r requirements.txt
+# Instale com: pip install -r requirements.txt -r requirements-dev.txt
+# NÃO inclui requirements-etl.txt (conflito de starlette com prefect 2.x)
 
 pytest==7.4.3
 pytest-cov==4.1.0

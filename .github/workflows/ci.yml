@@ -48,10 +48,9 @@ jobs:
           --health-retries 5
 
     steps:
-      # H-17 FIX: ações pinadas por SHA
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b  # v5.3.0
+      - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
@@ -59,6 +58,8 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
+          # ETL deps (prefect, great-expectations) omitidos — conflito de starlette
+          # com fastapi 0.115+. Instalar separadamente via requirements-etl.txt.
           pip install -r requirements.txt
           pip install -r requirements-dev.txt
 
@@ -123,7 +124,7 @@ jobs:
       packages: write
 
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
