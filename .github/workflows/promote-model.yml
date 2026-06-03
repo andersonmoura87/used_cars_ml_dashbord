@@ -1,0 +1,88 @@
+name: Promote Model to Production
+
+# Acionado manualmente via GitHub UI ou API — requer aprovação de revisor
+on:
+  workflow_dispatch:
+    inputs:
+      model_version:
+        description: "Versão do modelo a promover (deixe vazio para usar a mais recente de Staging)"
+        required: false
+        type: string
+      target_stage:
+        description: "Stage de destino"
+        required: true
+        default: Production
+        type: choice
+        options:
+          - Staging
+          - Production
+          - Archived
+      reason:
+        description: "Motivo da promoção (para auditoria)"
+        required: true
+        type: string
+
+jobs:
+  promote:
+    name: Promote ${{ inputs.target_stage }}
+    runs-on: ubuntu-latest
+    environment: production   # requer aprovação do environment no GitHub
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install mlflow
+        run: pip install mlflow==2.10.2
+
+      # ── Listar versões antes da promoção ──────────────────────────────────
+      - name: List current model versions
+        env:
+          MLFLOW_TRACKING_URI:    ${{ secrets.MLFLOW_TRACKING_URI }}
+          MLFLOW_REGISTERED_MODEL: ${{ secrets.MLFLOW_REGISTERED_MODEL || 'used_cars_price_model' }}
+        run: |
+          python scripts/promote_model.py --list
+
+      # ── Promover modelo ───────────────────────────────────────────────────
+      - name: Promote model
+        env:
+          MLFLOW_TRACKING_URI:    ${{ secrets.MLFLOW_TRACKING_URI }}
+          MLFLOW_REGISTERED_MODEL: ${{ secrets.MLFLOW_REGISTERED_MODEL || 'used_cars_price_model' }}
+          GITHUB_ACTOR:           ${{ github.actor }}
+        run: |
+          ARGS="--to ${{ inputs.target_stage }}"
+
+          if [ -n "${{ inputs.model_version }}" ]; then
+            ARGS="$ARGS --version ${{ inputs.model_version }}"
+          else
+            ARGS="$ARGS --from-stage Staging"
+          fi
+
+          python scripts/promote_model.py $ARGS
+
+      # ── Registrar motivo no GITHUB_STEP_SUMMARY ────────────────────────────
+      - name: Record promotion reason
+        run: |
+          echo "## Motivo da Promoção" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "> ${{ inputs.reason }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Aprovado por:** @${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Ref:** \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
+
+      # ── Notificar Slack ────────────────────────────────────────────────────
+      - name: Notify Slack
+        if: ${{ secrets.SLACK_WEBHOOK != '' }}
+        uses: rtCamp/action-slack-notify@v2
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+          SLACK_MESSAGE: >
+            :robot_face: Modelo *${{ secrets.MLFLOW_REGISTERED_MODEL || 'used_cars_price_model' }}*
+            ${{ inputs.model_version && format('v{0}', inputs.model_version) || '(latest staging)' }}
+            promovido para *${{ inputs.target_stage }}* por @${{ github.actor }}.
+            Motivo: ${{ inputs.reason }}
+          SLACK_COLOR: ${{ inputs.target_stage == 'Production' && 'good' || '#439FE0' }}

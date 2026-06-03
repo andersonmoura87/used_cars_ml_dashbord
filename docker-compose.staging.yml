@@ -1,0 +1,77 @@
+# Ambiente de staging isolado — portas distintas para coexistir com dev.
+# Uso:
+#   docker compose -f docker-compose.staging.yml up -d
+#   docker compose -f docker-compose.staging.yml down -v
+#
+# Variáveis obrigatórias (via .env.staging ou exportadas no CI):
+#   DOCKER_IMAGE   — imagem já construída (ex: ghcr.io/org/used-cars-ml:sha)
+#   API_KEY        — chave de API para smoke tests
+#   CORS_ORIGINS   — origens permitidas no staging
+
+services:
+  app:
+    image: ${DOCKER_IMAGE:-used-cars-ml:staging}
+    ports:
+      - "8100:8000"   # API staging (≠ 8000 dev)
+      - "8601:8501"   # Dashboard staging
+    environment:
+      - DB_HOST=db-staging
+      - DB_PORT=5432
+      - DB_NAME=used_cars_staging
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - REDIS_HOST=redis-staging
+      - REDIS_PORT=6379
+      - REDIS_DB=1
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+      - API_WORKERS=2
+      - API_RELOAD=false
+      - LOG_LEVEL=INFO
+      - ENVIRONMENT=staging
+      - API_KEY=${API_KEY:-staging-test-key}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:8601}
+      - MLFLOW_TRACKING_URI=${MLFLOW_TRACKING_URI:-}
+    depends_on:
+      db-staging:
+        condition: service_healthy
+      redis-staging:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    restart: no
+
+  db-staging:
+    image: postgres:15
+    ports:
+      - "5433:5432"   # porta distinta para não colidir com dev
+    environment:
+      - POSTGRES_DB=used_cars_staging
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    volumes:
+      - postgres_staging_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: no
+
+  redis-staging:
+    image: redis:7
+    ports:
+      - "6380:6379"   # porta distinta
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: no
+
+volumes:
+  postgres_staging_data:
