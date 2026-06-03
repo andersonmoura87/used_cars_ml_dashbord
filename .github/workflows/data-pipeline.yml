@@ -90,7 +90,7 @@ jobs:
         python -m prefect.cli run flow --path scripts/pipeline/cars_etl.py
 
     - name: Archive production artifacts
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v7
       with:
         name: metrics-reports
         path: |
