@@ -1,8 +1,9 @@
 name: Staging Deploy + Smoke Tests
 
+# Staging roda APENAS como gate do CD (workflow_call) — não em todo push para master.
+# Isso evita builds desnecessários, consome menos minutos de runner e elimina
+# falsos negativos quando STAGING_API_KEY não está configurado no ambiente dev.
 on:
-  push:
-    branches: [master, main]
   workflow_call:
     outputs:
       image_tag:

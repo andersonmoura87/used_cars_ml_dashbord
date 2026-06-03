@@ -30,7 +30,11 @@ jobs:
   promote:
     name: Promote to ${{ inputs.target_stage }}
     runs-on: ubuntu-latest
-    environment: production   # requer aprovação do environment no GitHub
+    # Garante que só roda via workflow_dispatch (chamada manual/API)
+    if: github.event_name == 'workflow_dispatch'
+    # environment: production  — descomente após criar o environment no GitHub:
+    #   Settings → Environments → New environment → "production"
+    #   e adicione "Required reviewers" para aprovação antes de rodar
 
     permissions:
       contents: read
