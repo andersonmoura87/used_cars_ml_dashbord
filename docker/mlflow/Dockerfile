@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.14-slim
 
 LABEL maintainer="used-cars-ml"
 LABEL description="MLflow Tracking Server with PostgreSQL backend"
