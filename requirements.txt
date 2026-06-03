@@ -19,7 +19,7 @@ slowapi==0.1.9
 loguru==0.7.2
 
 # Relatórios e Visualização
-matplotlib==3.8.2
+matplotlib==3.10.9
 seaborn==0.13.0
 reportlab==4.0.8
 
