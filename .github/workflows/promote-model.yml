@@ -45,7 +45,7 @@ jobs:
           cache: pip
 
       - name: Install mlflow
-        run: pip install mlflow==2.10.2
+        run: pip install mlflow==2.19.0
 
       # H-08 FIX: validar inputs ANTES de qualquer uso no shell
       - name: Validate inputs

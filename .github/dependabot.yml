@@ -9,28 +9,57 @@ updates:
       day: "monday"
       time: "08:00"
       timezone: "America/Sao_Paulo"
-    open-pull-requests-limit: 10
+    # Limitar PRs abertos simultaneamente — evita flood no CI
+    open-pull-requests-limit: 5
     reviewers:
-      - "ander"
+      - "andersonmoura87"
     labels:
       - "dependencies"
       - "python"
+    # Ignorar major bumps em pacotes que têm breaking changes frequentes.
+    # Atualizações de major version requerem revisão manual de compatibilidade.
+    ignore:
+      # pandas 3.x tem breaking changes na API de indexação e dtype inference
+      - dependency-name: "pandas"
+        update-types: ["version-update:semver-major"]
+      # plotly 6.x tem breaking changes na API de figura/layout
+      - dependency-name: "plotly"
+        update-types: ["version-update:semver-major"]
+      # xgboost 3.x tem mudanças na API de treino e parâmetros
+      - dependency-name: "xgboost"
+        update-types: ["version-update:semver-major"]
+      # prophet: atualizações de major version mudam API e dependências C++
+      - dependency-name: "prophet"
+        update-types: ["version-update:semver-major"]
+      # scipy: minor/patch são safe; major pode quebrar API
+      - dependency-name: "scipy"
+        update-types: ["version-update:semver-major"]
+      # statsmodels: major pode quebrar API de modelos
+      - dependency-name: "statsmodels"
+        update-types: ["version-update:semver-major"]
+      # great-expectations: major requer migração de configuração
+      - dependency-name: "great-expectations"
+        update-types: ["version-update:semver-major"]
+      # prefect: major tem breaking changes no decorador e infraestrutura
+      - dependency-name: "prefect"
+        update-types: ["version-update:semver-major"]
+      # sqlalchemy: 2.x já é o que usamos; 3.x terá breaking changes
+      - dependency-name: "sqlalchemy"
+        update-types: ["version-update:semver-major"]
     groups:
-      # Agrupar updates de segurança para revisar juntos
-      security-updates:
-        applies-to: security-updates
-        patterns:
-          - "*"
-      # Agrupar updates de runtime separados de dev
-      production-deps:
+      # Agrupar MLOps deps juntos (fastapi, uvicorn, pydantic, mlflow)
+      mlops-stack:
         patterns:
           - "fastapi"
           - "uvicorn"
-          - "sqlalchemy"
           - "pydantic"
           - "mlflow"
-          - "streamlit"
-          - "prefect"
+          - "slowapi"
+      # Agrupar dependências de segurança (atualizações prioritárias)
+      security-patches:
+        applies-to: security-updates
+        patterns:
+          - "*"
 
   # ── GitHub Actions ─────────────────────────────────────────────────────────
   - package-ecosystem: "github-actions"
@@ -40,12 +69,17 @@ updates:
       day: "monday"
       time: "08:00"
       timezone: "America/Sao_Paulo"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 3
     reviewers:
-      - "ander"
+      - "andersonmoura87"
     labels:
       - "dependencies"
       - "github-actions"
+    # Agrupar todas as actions num único PR para não gerar 10+ PRs de actions
+    groups:
+      github-actions-all:
+        patterns:
+          - "*"
 
   # ── Docker base images ─────────────────────────────────────────────────────
   - package-ecosystem: "docker"
@@ -53,15 +87,28 @@ updates:
     schedule:
       interval: "weekly"
       day: "monday"
+    open-pull-requests-limit: 2
+    reviewers:
+      - "andersonmoura87"
     labels:
       - "dependencies"
       - "docker"
+    ignore:
+      # Python 3.14 ainda está em alpha/beta — manter 3.11 (LTS estável)
+      - dependency-name: "python"
+        versions: ["3.12", "3.13", "3.14", ">= 3.12"]
 
   - package-ecosystem: "docker"
     directory: "/docker/mlflow"
     schedule:
       interval: "weekly"
       day: "monday"
+    open-pull-requests-limit: 2
+    reviewers:
+      - "andersonmoura87"
     labels:
       - "dependencies"
       - "docker"
+    ignore:
+      - dependency-name: "python"
+        versions: ["3.12", "3.13", "3.14", ">= 3.12"]

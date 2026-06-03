@@ -1,0 +1,65 @@
+name: Dependabot Auto-merge
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  # Aprova e faz merge automático de PRs patch/minor do Dependabot
+  # Major bumps ficam para revisão manual (estão no ignore do dependabot.yml)
+  auto-merge:
+    name: Auto-merge Dependabot PR
+    runs-on: ubuntu-latest
+    # Só roda em PRs do Dependabot
+    if: github.actor == 'dependabot[bot]'
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      # Busca metadados do PR do Dependabot para saber se é patch/minor/major
+      - name: Fetch Dependabot metadata
+        id: metadata
+        uses: dependabot/fetch-metadata@d7267dad1c21d77f9e9c9cf2ec87b3a7cd07de08  # v2.3.0
+        with:
+          github-token: "${{ secrets.GITHUB_TOKEN }}"
+
+      # Auto-approve em patch e minor (sem breaking changes esperados)
+      - name: Approve patch and minor updates
+        if: |
+          steps.metadata.outputs.update-type == 'version-update:semver-patch' ||
+          steps.metadata.outputs.update-type == 'version-update:semver-minor'
+        run: gh pr review --approve "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Auto-merge via squash em patch e minor
+      - name: Enable auto-merge for patch/minor
+        if: |
+          steps.metadata.outputs.update-type == 'version-update:semver-patch' ||
+          steps.metadata.outputs.update-type == 'version-update:semver-minor'
+        run: gh pr merge --auto --squash "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Major bumps: apenas adiciona label para revisão manual
+      - name: Label major bumps for manual review
+        if: steps.metadata.outputs.update-type == 'version-update:semver-major'
+        run: |
+          gh pr edit "$PR_URL" \
+            --add-label "major-version-bump" \
+            --add-label "needs-review"
+          gh pr comment "$PR_URL" --body \
+            "⚠️ **Major version bump detectado** — revisão manual necessária antes do merge.
+            
+            Verifique o CHANGELOG e breaking changes antes de aprovar.
+            Pacote: \`${{ steps.metadata.outputs.dependency-names }}\`
+            Versão atual → nova: \`${{ steps.metadata.outputs.previous-version }}\` → \`${{ steps.metadata.outputs.new-version }}\`"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

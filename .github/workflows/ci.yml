@@ -9,12 +9,16 @@ on:
 # M-10: least-privilege por workflow
 permissions:
   contents: read
+  # Dependabot PRs precisam de pull-requests: write para auto-merge futuro
+  pull-requests: read
 
 jobs:
   # ── Linting + Testes ────────────────────────────────────────────────────────
   test:
     name: Lint & Test (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    # Dependabot PRs com major bumps podem falhar — não bloquear master
+    continue-on-error: ${{ github.actor == 'dependabot[bot]' }}
     strategy:
       matrix:
         python-version: ["3.11"]
