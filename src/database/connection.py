@@ -1,99 +1,96 @@
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.exc import SQLAlchemyError
+from __future__ import annotations
+
 import logging
-from dotenv import load_dotenv
 import os
 
-# Configurar logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+from dotenv import load_dotenv
+from sqlalchemy import create_engine, text
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session, sessionmaker
 
-# Carregar variáveis de ambiente
 load_dotenv()
 
-def get_database_url():
-    """Retorna a URL de conexão com o banco de dados."""
-    return (
-        f"postgresql://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}@"
-        f"{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}"
-    )
+logger = logging.getLogger(__name__)
+
+
+def get_database_url() -> str:
+    user     = os.environ["DB_USER"]
+    password = os.environ["DB_PASSWORD"]
+    host     = os.environ.get("DB_HOST", "localhost")
+    port     = os.environ.get("DB_PORT", "5432")
+    name     = os.environ.get("DB_NAME", "used_cars")
+    return f"postgresql://{user}:{password}@{host}:{port}/{name}"
+
 
 def create_db_engine():
-    """Cria e retorna uma engine do SQLAlchemy."""
+    """
+    Cria e retorna uma Engine SQLAlchemy com pool configurável via env vars.
+
+    Low-FIX: limites de pool via variáveis de ambiente para evitar esgotamento
+    de conexões em produção.
+    """
+    pool_size    = int(os.environ.get("DB_POOL_SIZE",    "5"))
+    max_overflow = int(os.environ.get("DB_MAX_OVERFLOW", "10"))
+    pool_timeout = int(os.environ.get("DB_POOL_TIMEOUT", "30"))
+    pool_recycle = int(os.environ.get("DB_POOL_RECYCLE", "1800"))
+
     try:
         engine = create_engine(
             get_database_url(),
-            pool_size=5,
-            max_overflow=10,
-            pool_timeout=30,
-            pool_recycle=1800,
+            pool_size=pool_size,
+            max_overflow=max_overflow,
+            pool_timeout=pool_timeout,
+            pool_recycle=pool_recycle,
+            pool_pre_ping=True,   # detecta conexões mortas antes de usar
             connect_args={
-                'client_encoding': 'utf8',
-                'options': '-c client_encoding=utf8'
-            }
+                "client_encoding": "utf8",
+                "options": "-c client_encoding=utf8",
+                # statement_timeout em ms — protege contra queries longas
+                "options": (
+                    "-c client_encoding=utf8 "
+                    f"-c statement_timeout={os.environ.get('DB_STATEMENT_TIMEOUT_MS', '30000')}"
+                ),
+            },
         )
-        # Testar conexão
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
-            conn.commit()
-        
-        logger.info("Engine do banco de dados criada com sucesso")
+        logger.info("Engine do banco de dados criada (pool_size=%d, max_overflow=%d)", pool_size, max_overflow)
         return engine
-    except SQLAlchemyError as e:
-        logger.error(f"Erro ao criar engine do banco de dados: {str(e)}")
+    except SQLAlchemyError as exc:
+        logger.error("Erro ao criar engine do banco de dados: %s", exc)
         raise
 
-def get_db_session():
-    """Cria e retorna uma sessão do banco de dados."""
-    try:
-        engine = create_db_engine()
-        Session = sessionmaker(bind=engine)
-        return Session()
-    except SQLAlchemyError as e:
-        logger.error(f"Erro ao criar sessão do banco de dados: {str(e)}")
-        raise
 
-def test_connection():
-    """Testa a conexão com o banco de dados."""
-    try:
-        engine = create_db_engine()
-        with engine.connect() as conn:
-            result = conn.execute(text("SELECT version();")).scalar()
-            logger.info(f"Conectado ao PostgreSQL. Versão: {result}")
-            return True
-    except SQLAlchemyError as e:
-        logger.error(f"Erro ao testar conexão: {str(e)}")
-        return False
+# Sessão reutilizável (singleton por processo)
+_engine = None
+_SessionFactory = None
+
+
+def get_session_factory() -> sessionmaker:
+    global _engine, _SessionFactory
+    if _SessionFactory is None:
+        _engine = create_db_engine()
+        _SessionFactory = sessionmaker(bind=_engine, autocommit=False, autoflush=False)
+    return _SessionFactory
+
+
+def get_db_session() -> Session:
+    """Retorna uma sessão do banco. Responsabilidade do caller fechar com session.close()."""
+    return get_session_factory()()
+
 
 def get_db_connection():
-    """Cria conexão com o banco de dados PostgreSQL."""
+    """Alias para compatibilidade retroativa com scripts antigos."""
+    return create_db_engine()
+
+
+def test_connection() -> bool:
     try:
-        # Obter credenciais do ambiente
-        db_host = os.getenv('DB_HOST', 'localhost')
-        db_port = os.getenv('DB_PORT', '5432')
-        db_name = os.getenv('DB_NAME', 'mobato')
-        db_user = os.getenv('DB_USER', 'postgres')
-        db_pass = os.getenv('DB_PASSWORD', 'postgres')
-        
-        # Criar string de conexão
-        connection_string = (
-            f'postgresql://{db_user}:{db_pass}@{db_host}:{db_port}/{db_name}'
-        )
-        
-        # Criar engine com configurações de codificação
-        engine = create_engine(
-            connection_string,
-            client_encoding='utf8',
-            connect_args={'options': '-c client_encoding=utf8'}
-        )
-        
-        # Testar conexão
+        engine = create_db_engine()
         with engine.connect() as conn:
-            logger.info('Conexão com o banco de dados estabelecida com sucesso!')
-        
-        return engine
-    
-    except Exception as e:
-        logger.error(f'Erro ao conectar ao banco de dados: {str(e)}')
-        raise 
+            version = conn.execute(text("SELECT version();")).scalar()
+        logger.info("Conectado ao PostgreSQL. Versão: %s", version)
+        return True
+    except SQLAlchemyError as exc:
+        logger.error("Erro ao testar conexão: %s", exc)
+        return False

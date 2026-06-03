@@ -1,0 +1,67 @@
+version: 2
+
+updates:
+  # ── Python dependencies ────────────────────────────────────────────────────
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "08:00"
+      timezone: "America/Sao_Paulo"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "ander"
+    labels:
+      - "dependencies"
+      - "python"
+    groups:
+      # Agrupar updates de segurança para revisar juntos
+      security-updates:
+        applies-to: security-updates
+        patterns:
+          - "*"
+      # Agrupar updates de runtime separados de dev
+      production-deps:
+        patterns:
+          - "fastapi"
+          - "uvicorn"
+          - "sqlalchemy"
+          - "pydantic"
+          - "mlflow"
+          - "streamlit"
+          - "prefect"
+
+  # ── GitHub Actions ─────────────────────────────────────────────────────────
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "08:00"
+      timezone: "America/Sao_Paulo"
+    open-pull-requests-limit: 5
+    reviewers:
+      - "ander"
+    labels:
+      - "dependencies"
+      - "github-actions"
+
+  # ── Docker base images ─────────────────────────────────────────────────────
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    labels:
+      - "dependencies"
+      - "docker"
+
+  - package-ecosystem: "docker"
+    directory: "/docker/mlflow"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    labels:
+      - "dependencies"
+      - "docker"

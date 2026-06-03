@@ -1,9 +1,14 @@
+# Ambiente de desenvolvimento local.
+# Variáveis sensíveis devem ser definidas em .env (nunca commitado).
+# Copie .env.example → .env e preencha os valores antes de usar.
+
 services:
   app:
     build: .
     ports:
-      - "8000:8000"  # API
-      - "8501:8501"  # Dashboard
+      # H-16 FIX: bind em loopback apenas — não exposto na rede
+      - "127.0.0.1:8000:8000"
+      - "127.0.0.1:8501:8501"
     volumes:
       - .:/app
     environment:
@@ -11,13 +16,16 @@ services:
       - DB_PORT=5432
       - DB_NAME=used_cars
       - DB_USER=postgres
-      - DB_PASSWORD=postgres
+      # H-01 FIX: senha via variável de ambiente (definida em .env)
+      - DB_PASSWORD=${DB_PASSWORD}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_DB=0
+      # H-05 FIX: Redis com senha
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
       - API_HOST=0.0.0.0
       - API_PORT=8000
-      - API_WORKERS=4
+      - API_WORKERS=2
       - API_RELOAD=true
       - DASHBOARD_PORT=8501
       - LOG_LEVEL=INFO
@@ -25,20 +33,33 @@ services:
       - CACHE_TTL=3600
       - BATCH_SIZE=1000
       - MAX_WORKERS=4
+      - ENVIRONMENT=development
+      - API_KEY=${API_KEY}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:8501}
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+    networks:
+      - public
+      - backend
     depends_on:
-      - db
-      - redis
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
   db:
     image: postgres:15
     ports:
-      - "5432:5432"
+      # H-16 FIX: bind em loopback apenas
+      - "127.0.0.1:5432:5432"
     environment:
       - POSTGRES_DB=used_cars
       - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
+      # H-01 FIX: senha via variável de ambiente
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    networks:
+      - backend
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
@@ -47,25 +68,38 @@ services:
 
   redis:
     image: redis:7
+    # H-05 FIX: Redis com autenticação obrigatória
+    command: redis-server --requirepass ${REDIS_PASSWORD} --loglevel warning
     ports:
-      - "6379:6379"
+      # H-16 FIX: bind em loopback apenas
+      - "127.0.0.1:6379:6379"
     volumes:
       - redis_data:/data
+    networks:
+      - backend
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      # H-05 FIX: health check com autenticação
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
       interval: 5s
       timeout: 5s
       retries: 5
 
+  # C-02 FIX: pgAdmin apenas com perfil explícito (não sobe por default)
+  # Para usar: docker compose --profile tools up pgadmin
   pgadmin:
+    profiles: [tools]
     image: dpage/pgadmin4
     ports:
-      - "5050:80"
+      # H-16 FIX: bind em loopback apenas
+      - "127.0.0.1:5050:80"
     environment:
-      - PGADMIN_DEFAULT_EMAIL=admin@admin.com
-      - PGADMIN_DEFAULT_PASSWORD=admin
+      # C-02 FIX: credenciais via variáveis de ambiente
+      - PGADMIN_DEFAULT_EMAIL=${PGADMIN_EMAIL:-admin@localhost}
+      - PGADMIN_DEFAULT_PASSWORD=${PGADMIN_PASSWORD}
     volumes:
       - pgadmin_data:/var/lib/pgadmin
+    networks:
+      - backend
     depends_on:
       - db
 
@@ -83,10 +117,13 @@ services:
       - "--port"
       - "5000"
     ports:
-      - "5000:5000"
+      # C-01 FIX: bind em loopback apenas — não exposto na rede pública
+      - "127.0.0.1:5000:5000"
     volumes:
       - mlflow_db:/mlflow
       - mlflow_artifacts:/mlflow/artifacts
+    networks:
+      - backend
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
@@ -100,4 +137,14 @@ volumes:
   redis_data:
   pgadmin_data:
   mlflow_db:
-  mlflow_artifacts: 
+  mlflow_artifacts:
+
+# Low-FIX: isolamento de rede
+#   public  → app exposto ao host (via port bindings)
+#   backend → db, redis, mlflow, pgadmin inacessíveis diretamente do host
+networks:
+  public:
+    driver: bridge
+  backend:
+    driver: bridge
+    internal: true   # sem acesso à internet; somente container-to-container

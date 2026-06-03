@@ -1,50 +1,72 @@
-# Use uma imagem base do Python
-FROM python:3.11-slim
+# ═══════════════════════════════════════════════════════════════════════════════
+# M-18 FIX: Multi-stage build
+#   Stage 1 (builder): compiladores + build-essential + git → constrói wheels
+#   Stage 2 (runtime): apenas libpq5 + curl → imagem slim sem ferramentas de dev
+# ═══════════════════════════════════════════════════════════════════════════════
 
-# Definir variáveis de ambiente
+# ── Stage 1: Builder ──────────────────────────────────────────────────────────
+FROM python:3.11-slim AS builder
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        build-essential \
+        libpq-dev \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+
+COPY requirements-core.txt requirements.txt ./
+
+# Compilar todas as dependências como wheels (offline install no stage runtime)
+RUN pip wheel --no-cache-dir --timeout 300 --retries 5 \
+    -r requirements-core.txt \
+    -r requirements.txt \
+    --wheel-dir /build/wheels
+
+# ── Stage 2: Runtime ──────────────────────────────────────────────────────────
+FROM python:3.11-slim AS runtime
+
+LABEL org.opencontainers.image.title="used-cars-ml API"
+LABEL org.opencontainers.image.description="API + ML pipeline para análise de veículos usados"
+
+# Apenas dependências de runtime (sem build-essential, git, compiladores)
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        libpq5 \
+        curl \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# Definir diretório de trabalho
 WORKDIR /app
 
-# Instalar dependências do sistema
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-        build-essential \
-        curl \
-        git \
-        libpq-dev \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copiar arquivos de requisitos
+# Instalar wheels pré-compilados (rápido, sem acesso à internet no runtime)
+COPY --from=builder /build/wheels /tmp/wheels
 COPY requirements-core.txt requirements.txt ./
+RUN pip install --no-cache-dir --no-index --find-links=/tmp/wheels \
+    -r requirements-core.txt \
+    -r requirements.txt \
+    && rm -rf /tmp/wheels
 
-# 1ª camada: dependências core (pandas, sklearn, fastapi, mlflow…)
-# Cache separado para que mudanças em deps secundárias não reiniciem este passo
-RUN pip install --no-cache-dir --timeout 300 --retries 5 -r requirements-core.txt
-
-# 2ª camada: dependências restantes (prophet, statsmodels, reportlab…)
-RUN pip install --no-cache-dir --timeout 300 --retries 5 -r requirements.txt
-
-# Copiar o código fonte
+# Copiar código-fonte
 COPY . .
 
-# H-07 FIX: usuário não-privilegiado (evita execução como root)
+# H-07 FIX: usuário não-privilegiado
 RUN groupadd -r appuser && useradd -r -g appuser appuser \
     && mkdir -p logs data/raw data/processed models \
     && chown -R appuser:appuser /app
 
 USER appuser
 
-# Expor portas
 EXPOSE 8000 8501
 
-# Definir variáveis de ambiente padrão
-# H-06 FIX: sem credenciais baked na imagem — injetar em runtime
+# H-06 FIX: sem DB_PASSWORD baked na imagem — injetar em runtime
+# H-18 FIX: API_RELOAD=false por default
 ENV DB_HOST=db \
     DB_PORT=5432 \
     DB_NAME=used_cars \
@@ -54,8 +76,8 @@ ENV DB_HOST=db \
     REDIS_DB=0 \
     API_HOST=0.0.0.0 \
     API_PORT=8000 \
-    API_WORKERS=4 \
-    API_RELOAD=true \
+    API_WORKERS=2 \
+    API_RELOAD=false \
     DASHBOARD_PORT=8501 \
     LOG_LEVEL=INFO \
     LOG_FILE=logs/app.log \
@@ -63,5 +85,5 @@ ENV DB_HOST=db \
     BATCH_SIZE=1000 \
     MAX_WORKERS=4
 
-# H-18 FIX: sem --reload em produção
-CMD ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"] 
+# H-18 FIX: sem --reload
+CMD ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]

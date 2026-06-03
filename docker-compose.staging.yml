@@ -1,35 +1,37 @@
 # Ambiente de staging isolado — portas distintas para coexistir com dev.
-# Uso:
-#   docker compose -f docker-compose.staging.yml up -d
-#   docker compose -f docker-compose.staging.yml down -v
-#
 # Variáveis obrigatórias (via .env.staging ou exportadas no CI):
 #   DOCKER_IMAGE   — imagem já construída (ex: ghcr.io/org/used-cars-ml:sha)
-#   API_KEY        — chave de API para smoke tests
+#   API_KEY        — chave de API para smoke tests (STAGING_API_KEY no GitHub)
+#   DB_PASSWORD    — senha do PostgreSQL staging
+#   REDIS_PASSWORD — senha do Redis staging
 #   CORS_ORIGINS   — origens permitidas no staging
 
 services:
   app:
     image: ${DOCKER_IMAGE:-used-cars-ml:staging}
     ports:
-      - "8100:8000"   # API staging (≠ 8000 dev)
-      - "8601:8501"   # Dashboard staging
+      # H-16 FIX: bind em loopback — não exposto na rede do runner
+      - "127.0.0.1:8100:8000"
+      - "127.0.0.1:8601:8501"
     environment:
       - DB_HOST=db-staging
       - DB_PORT=5432
       - DB_NAME=used_cars_staging
       - DB_USER=postgres
-      - DB_PASSWORD=postgres
+      # H-02 FIX: senha via variável de ambiente — sem hardcode
+      - DB_PASSWORD=${DB_PASSWORD}
       - REDIS_HOST=redis-staging
       - REDIS_PORT=6379
       - REDIS_DB=1
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
       - API_HOST=0.0.0.0
       - API_PORT=8000
       - API_WORKERS=2
       - API_RELOAD=false
       - LOG_LEVEL=INFO
       - ENVIRONMENT=staging
-      - API_KEY=${API_KEY}    # H-03 FIX: sem fallback previsível — exige injeção explícita
+      # H-03 FIX: sem fallback previsível — exige injeção explícita
+      - API_KEY=${API_KEY}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:8601}
       - MLFLOW_TRACKING_URI=${MLFLOW_TRACKING_URI:-}
     depends_on:
@@ -48,11 +50,13 @@ services:
   db-staging:
     image: postgres:15
     ports:
-      - "5433:5432"   # porta distinta para não colidir com dev
+      # H-16 FIX: bind em loopback
+      - "127.0.0.1:5433:5432"
     environment:
       - POSTGRES_DB=used_cars_staging
       - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
+      # H-02 FIX: senha via variável de ambiente
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
     volumes:
       - postgres_staging_data:/var/lib/postgresql/data
     healthcheck:
@@ -64,10 +68,13 @@ services:
 
   redis-staging:
     image: redis:7
+    # H-05 FIX: Redis com autenticação
+    command: redis-server --requirepass ${REDIS_PASSWORD} --loglevel warning
     ports:
-      - "6380:6379"   # porta distinta
+      # H-16 FIX: bind em loopback
+      - "127.0.0.1:6380:6379"
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
       interval: 5s
       timeout: 5s
       retries: 5

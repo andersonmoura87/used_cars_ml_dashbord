@@ -4,6 +4,7 @@ import logging
 import os
 import secrets
 import sys
+import uuid
 from datetime import datetime
 
 from dotenv import load_dotenv
@@ -11,6 +12,15 @@ from fastapi import FastAPI, HTTPException, Request, Security, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.security.api_key import APIKeyHeader
+
+# M-02: Rate limiting
+try:
+    from slowapi import Limiter, _rate_limit_exceeded_handler
+    from slowapi.errors import RateLimitExceeded
+    from slowapi.util import get_remote_address
+    _SLOWAPI_AVAILABLE = True
+except ImportError:  # pragma: no cover
+    _SLOWAPI_AVAILABLE = False
 
 load_dotenv()
 
@@ -59,6 +69,53 @@ app = FastAPI(
     redoc_url=_redoc_url,
     openapi_url=_openapi_url,
 )
+
+# ── M-02: Rate limiting ───────────────────────────────────────────────────────
+if _SLOWAPI_AVAILABLE:
+    _rate_limit = os.getenv("API_RATE_LIMIT", "200/minute")
+    limiter = Limiter(key_func=get_remote_address, default_limits=[_rate_limit])
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+    logger.info("Rate limiting habilitado: %s por IP", _rate_limit)
+else:
+    logger.warning("slowapi não instalado — rate limiting desabilitado")
+
+# ── Low: Correlation ID — rastreabilidade por request ─────────────────────────
+@app.middleware("http")
+async def add_correlation_id(request: Request, call_next):
+    correlation_id = request.headers.get("X-Correlation-ID") or str(uuid.uuid4())
+    request.state.correlation_id = correlation_id
+    response = await call_next(request)
+    response.headers["X-Correlation-ID"] = correlation_id
+    return response
+
+# ── Low: Request body size limit (default 10 MB) ──────────────────────────────
+_MAX_BODY_SIZE = int(os.getenv("MAX_REQUEST_BODY_BYTES", str(10 * 1024 * 1024)))  # 10 MB
+
+@app.middleware("http")
+async def limit_request_body(request: Request, call_next):
+    if request.method in ("POST", "PUT", "PATCH"):
+        content_length = request.headers.get("content-length")
+        if content_length and int(content_length) > _MAX_BODY_SIZE:
+            return JSONResponse(
+                status_code=413,
+                content={"error": "Request body too large", "max_bytes": _MAX_BODY_SIZE},
+            )
+    return await call_next(request)
+
+# ── M-03: Security headers ────────────────────────────────────────────────────
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"]  = "nosniff"
+    response.headers["X-Frame-Options"]          = "DENY"
+    response.headers["X-XSS-Protection"]         = "1; mode=block"
+    response.headers["Referrer-Policy"]          = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"]        = "geolocation=(), microphone=(), camera=()"
+    response.headers["Cache-Control"]            = "no-store"
+    if _IS_PROD_LIKE:
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains; preload"
+    return response
 
 # ── CORS — allow_credentials=False pois usamos header X-API-Key (M-05) ────────
 _raw_origins = os.getenv("CORS_ORIGINS", "http://localhost:8501")

@@ -1,0 +1,19 @@
+# Qualquer arquivo → dono padrão
+*                                   @ander
+
+# Segurança — revisão obrigatória para mudanças em auth/configs
+src/api/main.py                     @ander
+.env.example                        @ander
+Dockerfile                          @ander
+docker-compose*.yml                 @ander
+.github/workflows/                  @ander
+
+# Modelos e pipelines
+src/models/                         @ander
+scripts/pipeline/                   @ander
+scripts/train_model.py              @ander
+
+# CI/CD
+.github/workflows/cd.yml            @ander
+.github/workflows/staging.yml       @ander
+.github/workflows/promote-model.yml @ander
