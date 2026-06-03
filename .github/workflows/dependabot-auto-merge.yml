@@ -1,7 +1,5 @@
 name: Dependabot Auto-merge
 
-# Roda quando o CI passa em PRs do Dependabot (workflow_run garante token com write)
-# Dependabot PRs usam token read-only — precisamos do workflow_run para ter permissão
 on:
   workflow_run:
     workflows: ["CI"]
@@ -15,7 +13,6 @@ jobs:
   auto-merge:
     name: Auto-merge Dependabot patch/minor
     runs-on: ubuntu-latest
-    # Só roda se CI passou e o PR é do Dependabot
     if: |
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.actor.login == 'dependabot[bot]'
@@ -23,18 +20,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Busca o PR associado ao workflow_run
-      - name: Get PR number
+      - name: Get PR number from workflow run
         id: pr
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
-          PR_NUMBER=$(gh pr list --state open --json number,headRefOid \
+          PR_NUMBER=$(gh pr list --state open \
+            --json number,headRefOid \
             --jq ".[] | select(.headRefOid == \"$HEAD_SHA\") | .number" | head -1)
           echo "number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
 
-      # Busca metadados do PR do Dependabot
       - name: Fetch Dependabot metadata
         id: metadata
         if: steps.pr.outputs.number != ''
@@ -43,8 +39,7 @@ jobs:
           github-token: "${{ secrets.GITHUB_TOKEN }}"
           pr-number: ${{ steps.pr.outputs.number }}
 
-      # Auto-approve em patch e minor
-      - name: Approve patch/minor updates
+      - name: Approve patch or minor updates
         if: |
           steps.pr.outputs.number != '' &&
           (steps.metadata.outputs.update-type == 'version-update:semver-patch' ||
@@ -52,10 +47,12 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ steps.pr.outputs.number }}
-        run: gh pr review "$PR_NUMBER" --approve --body "Auto-aprovado: patch/minor sem breaking changes."
+        run: |
+          gh pr review "$PR_NUMBER" \
+            --approve \
+            --body "Auto-aprovado: patch/minor sem breaking changes esperadas."
 
-      # Enable auto-merge para patch e minor (requer "Allow auto-merge" no repo)
-      - name: Enable auto-merge for patch/minor
+      - name: Enable auto-merge for patch or minor
         if: |
           steps.pr.outputs.number != '' &&
           (steps.metadata.outputs.update-type == 'version-update:semver-patch' ||
@@ -65,18 +62,19 @@ jobs:
           PR_NUMBER: ${{ steps.pr.outputs.number }}
         run: gh pr merge "$PR_NUMBER" --auto --squash
 
-      # Major: comentário informativo para revisão manual
-      - name: Label major bump for manual review
+      - name: Label and comment major bumps for manual review
         if: |
           steps.pr.outputs.number != '' &&
           steps.metadata.outputs.update-type == 'version-update:semver-major'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ steps.pr.outputs.number }}
+          DEP_NAMES: ${{ steps.metadata.outputs.dependency-names }}
+          PREV_VERSION: ${{ steps.metadata.outputs.previous-version }}
+          NEW_VERSION: ${{ steps.metadata.outputs.new-version }}
         run: |
           gh pr edit "$PR_NUMBER" --add-label "major-version-bump" 2>/dev/null || true
-          gh pr comment "$PR_NUMBER" --body \
-            "⚠️ **Major version bump** — revisão manual necessária.
-            Pacote: \`${{ steps.metadata.outputs.dependency-names }}\`
-            Versão: \`${{ steps.metadata.outputs.previous-version }}\` → \`${{ steps.metadata.outputs.new-version }}\`
-            Verifique o CHANGELOG antes de aprovar."
+          BODY="Major version bump detected -- manual review required before merging."
+          BODY="$BODY Package: $DEP_NAMES  Version: $PREV_VERSION -> $NEW_VERSION"
+          BODY="$BODY Please check the CHANGELOG for breaking changes before approving."
+          gh pr comment "$PR_NUMBER" --body "$BODY"
