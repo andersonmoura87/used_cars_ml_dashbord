@@ -57,6 +57,24 @@ data/interim/
 models/*.joblib
 mlruns/
 gx/uncommitted/
+
+# Arquivos de ambiente (M-15: .env.staging não estava coberto)
+.env.staging
+.env.production
+.env.local
+# Padrão seguro: ignorar todos .env exceto o exemplo
+.env.*
+!.env.example
+
+# Credenciais e chaves (M-22)
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa
+id_ed25519
+credentials.json
+service-account*.json
 # Código legado arquivado (mantido para referência, não vai pro package)
 archive/
 models/*.pkl

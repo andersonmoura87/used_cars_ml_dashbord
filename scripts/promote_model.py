@@ -37,8 +37,11 @@ except ImportError:
     print("ERRO: mlflow não instalado. Execute: pip install mlflow")
     sys.exit(1)
 
+import re
+
 DEFAULT_MODEL = "used_cars_price_model"
 VALID_STAGES  = ("None", "Staging", "Production", "Archived")
+_MODEL_NAME_RE = re.compile(r"^[a-zA-Z0-9_\-]{1,128}$")
 
 
 def get_client() -> MlflowClient:
@@ -84,6 +87,21 @@ def list_versions(client: MlflowClient, model_name: str) -> None:
         print(f"{v.version:<8} {v.current_stage:<12} {run_id:<36} {ts:<20} {metrics_str}")
 
 
+def _validate_model_name(model_name: str) -> None:
+    """M-07 FIX: valida nome do modelo antes de usar em filtro MLflow."""
+    if not _MODEL_NAME_RE.match(model_name):
+        print(f"ERRO: nome de modelo inválido '{model_name}'. "
+              "Use apenas letras, dígitos, hífens e underscores (máx 128 chars).")
+        sys.exit(1)
+
+
+def _validate_version(version: str) -> None:
+    """M-08 FIX: valida que a versão é numérica."""
+    if not version.isdigit():
+        print(f"ERRO: versão inválida '{version}'. Deve ser um número inteiro positivo.")
+        sys.exit(1)
+
+
 def promote(
     client: MlflowClient,
     model_name: str,
@@ -93,6 +111,9 @@ def promote(
     archive_existing: bool,
 ) -> None:
     """Promove a versão especificada (ou a mais recente de from_stage) para to_stage."""
+    _validate_model_name(model_name)
+    if version:
+        _validate_version(version)
     if to_stage not in VALID_STAGES:
         print(f"ERRO: Stage inválido '{to_stage}'. Válidos: {VALID_STAGES}")
         sys.exit(1)

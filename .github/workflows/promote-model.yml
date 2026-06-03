@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
     inputs:
       model_version:
-        description: "Versão do modelo a promover (deixe vazio para usar a mais recente de Staging)"
+        description: "Versão do modelo a promover (apenas dígitos; vazio = mais recente de Staging)"
         required: false
         type: string
       target_stage:
@@ -18,20 +18,28 @@ on:
           - Production
           - Archived
       reason:
-        description: "Motivo da promoção (para auditoria)"
+        description: "Motivo da promoção (para auditoria — máx 200 chars)"
         required: true
         type: string
 
+# M-10 FIX: least-privilege — apenas leitura por default
+permissions:
+  contents: read
+
 jobs:
   promote:
-    name: Promote ${{ inputs.target_stage }}
+    name: Promote to ${{ inputs.target_stage }}
     runs-on: ubuntu-latest
     environment: production   # requer aprovação do environment no GitHub
 
-    steps:
-      - uses: actions/checkout@v4
+    permissions:
+      contents: read
 
-      - uses: actions/setup-python@v5
+    steps:
+      # H-17 FIX: actions fixadas por SHA completo
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b  # v5.3.0
         with:
           python-version: "3.11"
           cache: pip
@@ -39,50 +47,61 @@ jobs:
       - name: Install mlflow
         run: pip install mlflow==2.10.2
 
+      # H-08 FIX: validar inputs ANTES de qualquer uso no shell
+      - name: Validate inputs
+        run: |
+          VERSION="${{ inputs.model_version }}"
+          if [ -n "$VERSION" ] && ! echo "$VERSION" | grep -qE '^[0-9]+$'; then
+            echo "::error::model_version deve conter apenas dígitos. Recebido: '$VERSION'"
+            exit 1
+          fi
+
       # ── Listar versões antes da promoção ──────────────────────────────────
       - name: List current model versions
         env:
-          MLFLOW_TRACKING_URI:    ${{ secrets.MLFLOW_TRACKING_URI }}
-          MLFLOW_REGISTERED_MODEL: ${{ secrets.MLFLOW_REGISTERED_MODEL || 'used_cars_price_model' }}
-        run: |
-          python scripts/promote_model.py --list
+          MLFLOW_TRACKING_URI:     ${{ secrets.MLFLOW_TRACKING_URI }}
+          MLFLOW_REGISTERED_MODEL: ${{ secrets.MLFLOW_REGISTERED_MODEL }}
+        run: python scripts/promote_model.py --list
 
-      # ── Promover modelo ───────────────────────────────────────────────────
+      # H-08 FIX: inputs passados via env vars, não interpolados no shell
       - name: Promote model
         env:
-          MLFLOW_TRACKING_URI:    ${{ secrets.MLFLOW_TRACKING_URI }}
-          MLFLOW_REGISTERED_MODEL: ${{ secrets.MLFLOW_REGISTERED_MODEL || 'used_cars_price_model' }}
-          GITHUB_ACTOR:           ${{ github.actor }}
+          MLFLOW_TRACKING_URI:     ${{ secrets.MLFLOW_TRACKING_URI }}
+          MLFLOW_REGISTERED_MODEL: ${{ secrets.MLFLOW_REGISTERED_MODEL }}
+          GITHUB_ACTOR:            ${{ github.actor }}
+          MODEL_VERSION:           ${{ inputs.model_version }}
+          TARGET_STAGE:            ${{ inputs.target_stage }}
         run: |
-          ARGS="--to ${{ inputs.target_stage }}"
-
-          if [ -n "${{ inputs.model_version }}" ]; then
-            ARGS="$ARGS --version ${{ inputs.model_version }}"
+          ARGS=(--to "$TARGET_STAGE")
+          if [ -n "$MODEL_VERSION" ]; then
+            ARGS+=(--version "$MODEL_VERSION")
           else
-            ARGS="$ARGS --from-stage Staging"
+            ARGS+=(--from-stage Staging)
           fi
+          python scripts/promote_model.py "${ARGS[@]}"
 
-          python scripts/promote_model.py $ARGS
-
-      # ── Registrar motivo no GITHUB_STEP_SUMMARY ────────────────────────────
+      # M-09 FIX: reason passado via env var, sem interpolação direta
       - name: Record promotion reason
+        env:
+          PROMOTION_REASON: ${{ inputs.reason }}
+          PROMOTION_ACTOR:  ${{ github.actor }}
+          PROMOTION_REF:    ${{ github.ref_name }}
+          PROMOTION_STAGE:  ${{ inputs.target_stage }}
         run: |
-          echo "## Motivo da Promoção" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "> ${{ inputs.reason }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Aprovado por:** @${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Ref:** \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
+          {
+            echo "## Promoção de Modelo — $PROMOTION_STAGE"
+            echo ""
+            echo "**Motivo:** $PROMOTION_REASON"
+            echo ""
+            echo "**Aprovado por:** @$PROMOTION_ACTOR | **Ref:** \`$PROMOTION_REF\`"
+          } >> "$GITHUB_STEP_SUMMARY"
 
-      # ── Notificar Slack ────────────────────────────────────────────────────
       - name: Notify Slack
         if: ${{ secrets.SLACK_WEBHOOK != '' }}
-        uses: rtCamp/action-slack-notify@v2
+        uses: rtCamp/action-slack-notify@4e5fb42d249be6a45a298f3c9543b111b02f7907  # v2.3.0
         env:
           SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
           SLACK_MESSAGE: >
-            :robot_face: Modelo *${{ secrets.MLFLOW_REGISTERED_MODEL || 'used_cars_price_model' }}*
-            ${{ inputs.model_version && format('v{0}', inputs.model_version) || '(latest staging)' }}
-            promovido para *${{ inputs.target_stage }}* por @${{ github.actor }}.
-            Motivo: ${{ inputs.reason }}
+            :robot_face: Modelo promovido para *${{ inputs.target_stage }}*
+            por @${{ github.actor }}.
           SLACK_COLOR: ${{ inputs.target_stage == 'Production' && 'good' || '#439FE0' }}

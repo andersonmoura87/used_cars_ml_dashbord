@@ -12,6 +12,13 @@ RUN pip install --no-cache-dir \
     psycopg2-binary==2.9.9 \
     boto3==1.34.0
 
+# H-07 FIX: usuário não-privilegiado
+RUN groupadd -r mlflow && useradd -r -g mlflow mlflow \
+    && mkdir -p /mlflow/artifacts \
+    && chown -R mlflow:mlflow /mlflow
+
+USER mlflow
+
 EXPOSE 5000
 
 HEALTHCHECK --interval=10s --timeout=5s --start-period=30s --retries=5 \

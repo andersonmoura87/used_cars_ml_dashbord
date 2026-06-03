@@ -33,18 +33,22 @@ RUN pip install --no-cache-dir --timeout 300 --retries 5 -r requirements.txt
 # Copiar o código fonte
 COPY . .
 
-# Criar diretórios necessários
-RUN mkdir -p logs data/raw data/processed
+# H-07 FIX: usuário não-privilegiado (evita execução como root)
+RUN groupadd -r appuser && useradd -r -g appuser appuser \
+    && mkdir -p logs data/raw data/processed models \
+    && chown -R appuser:appuser /app
+
+USER appuser
 
 # Expor portas
 EXPOSE 8000 8501
 
 # Definir variáveis de ambiente padrão
+# H-06 FIX: sem credenciais baked na imagem — injetar em runtime
 ENV DB_HOST=db \
     DB_PORT=5432 \
     DB_NAME=used_cars \
     DB_USER=postgres \
-    DB_PASSWORD=postgres \
     REDIS_HOST=redis \
     REDIS_PORT=6379 \
     REDIS_DB=0 \
@@ -59,5 +63,5 @@ ENV DB_HOST=db \
     BATCH_SIZE=1000 \
     MAX_WORKERS=4
 
-# Comando padrão
-CMD ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"] 
+# H-18 FIX: sem --reload em produção
+CMD ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"] 

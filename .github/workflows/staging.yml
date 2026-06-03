@@ -3,11 +3,18 @@ name: Staging Deploy + Smoke Tests
 on:
   push:
     branches: [master, main]
-  workflow_call:          # permite ser chamado pelo cd.yml
+  workflow_call:
     outputs:
       image_tag:
         description: "Tag da imagem construída"
         value: ${{ jobs.build-and-test.outputs.image_tag }}
+
+# M-10 FIX: least-privilege permissions
+permissions:
+  contents:      read
+  packages:      write   # push no GHCR
+  checks:        write   # publish-unit-test-result-action
+  pull-requests: write
 
 concurrency:
   group: staging-${{ github.ref }}
@@ -21,17 +28,16 @@ jobs:
       image_tag: ${{ steps.meta.outputs.version }}
 
     env:
-      REGISTRY: ghcr.io
+      REGISTRY:   ghcr.io
       IMAGE_NAME: ${{ github.repository_owner }}/used-cars-ml
 
     steps:
-      # ── Checkout ────────────────────────────────────────────────────────────
-      - uses: actions/checkout@v4
+      # H-17 FIX: actions fixadas por SHA completo
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
 
-      # ── Build da imagem Docker ───────────────────────────────────────────────
       - name: Docker meta
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@8e5442c4ef9f78752691e2d8f8d19755c6f78e81  # v5.5.1
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
@@ -40,10 +46,10 @@ jobs:
             type=raw,value=staging
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@f95db51fddba0c2d1ec667646a06c2ce06100226  # v3.0.0
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@343f7c4344506bcbf9b4de18042ae17996df046d  # v3.0.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -51,12 +57,12 @@ jobs:
 
       - name: Build and push image
         id: build
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@4a13e500e55cf31b7a5d59a38ab2040ab0f42f56  # v5.1.0
         with:
           context: .
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags:       ${{ steps.meta.outputs.tags }}
+          labels:     ${{ steps.meta.outputs.labels }}
           cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache
           cache-to:   type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache,mode=max
 
@@ -64,11 +70,16 @@ jobs:
       - name: Start staging environment
         env:
           DOCKER_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:staging
-          API_KEY: ${{ secrets.STAGING_API_KEY || 'staging-test-key' }}
+          # H-04 FIX: sem fallback previsível — exige secret configurado
+          API_KEY:      ${{ secrets.STAGING_API_KEY }}
           CORS_ORIGINS: "http://localhost:8601"
+          ENVIRONMENT:  staging
         run: |
+          if [ -z "$API_KEY" ]; then
+            echo "::error::Secret STAGING_API_KEY não configurado. Configure em Settings → Secrets."
+            exit 1
+          fi
           docker compose -f docker-compose.staging.yml up -d
-          echo "Aguardando serviços ficarem saudáveis..."
 
       - name: Wait for staging API to be healthy
         run: |
@@ -87,7 +98,7 @@ jobs:
 
       # ── Smoke tests ───────────────────────────────────────────────────────────
       - name: Set up Python for smoke tests
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b  # v5.3.0
         with:
           python-version: "3.11"
           cache: pip
@@ -98,9 +109,10 @@ jobs:
       - name: Run smoke tests
         id: smoke
         env:
-          API_BASE_URL: http://localhost:8100
-          API_KEY: ${{ secrets.STAGING_API_KEY || 'staging-test-key' }}
-          SMOKE_TIMEOUT: "15"
+          API_BASE_URL:   http://localhost:8100
+          # H-13 FIX: sem fallback — exige secret configurado
+          API_KEY:        ${{ secrets.STAGING_API_KEY }}
+          SMOKE_TIMEOUT:  "15"
         run: |
           pytest tests/smoke/ -v \
             --tb=short \
@@ -109,21 +121,21 @@ jobs:
 
       # ── Publicar resultados ───────────────────────────────────────────────────
       - name: Publish smoke test results
-        uses: EnricoMi/publish-unit-test-result-action@v2
+        uses: EnricoMi/publish-unit-test-result-action@567cc7f8dcea3ebf288184674f887d6eceae935e  # v2.17.0
         if: always()
         with:
           files: smoke-results.xml
           check_name: "Smoke Tests (staging)"
 
       # ── Rollback se smoke falhou ──────────────────────────────────────────────
-      - name: Rollback — show staging logs on failure
+      - name: Rollback — show logs on failure
         if: failure() && steps.smoke.outcome == 'failure'
         run: |
           echo "::error::Smoke tests falharam — rollback automático (staging derrubado)"
           docker compose -f docker-compose.staging.yml logs --tail=100
           docker compose -f docker-compose.staging.yml down -v
 
-      # ── Teardown do staging ───────────────────────────────────────────────────
+      # ── Teardown ──────────────────────────────────────────────────────────────
       - name: Teardown staging environment
         if: always()
         run: docker compose -f docker-compose.staging.yml down -v --remove-orphans

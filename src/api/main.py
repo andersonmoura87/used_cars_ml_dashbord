@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import logging
 import os
+import secrets
+import sys
 from datetime import datetime
 
 from dotenv import load_dotenv
@@ -16,13 +18,35 @@ load_dotenv()
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
     format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
-    handlers=[
-        logging.StreamHandler(),
-    ],
+    handlers=[logging.StreamHandler()],
 )
 logger = logging.getLogger(__name__)
 
-# ── app ───────────────────────────────────────────────────────────────────────
+# ── ambiente e segurança ──────────────────────────────────────────────────────
+_ENVIRONMENT = os.getenv("ENVIRONMENT", "development").lower()
+_IS_PROD_LIKE = _ENVIRONMENT in ("production", "staging")
+_API_KEY = os.getenv("API_KEY", "")
+
+# C-03 FIX: fail-closed — em produção/staging sem API_KEY, o processo para.
+if _IS_PROD_LIKE and not _API_KEY:
+    logger.critical(
+        "API_KEY não definida em ambiente '%s'. "
+        "Defina API_KEY no .env ou nas variáveis de ambiente. Encerrando.",
+        _ENVIRONMENT,
+    )
+    sys.exit(1)
+
+if not _API_KEY:
+    logger.warning(
+        "API_KEY não configurada — autenticação desativada (modo desenvolvimento). "
+        "Defina API_KEY antes de usar em staging/produção."
+    )
+
+# ── app — docs desabilitados em produção (M-01) ───────────────────────────────
+_docs_url    = None if _IS_PROD_LIKE else "/docs"
+_redoc_url   = None if _IS_PROD_LIKE else "/redoc"
+_openapi_url = None if _IS_PROD_LIKE else "/openapi.json"
+
 app = FastAPI(
     title="Used Cars Market Analysis API",
     description=(
@@ -31,22 +55,24 @@ app = FastAPI(
         "`X-API-Key: <your_key>` configured in the `API_KEY` environment variable."
     ),
     version="1.0.0",
+    docs_url=_docs_url,
+    redoc_url=_redoc_url,
+    openapi_url=_openapi_url,
 )
 
-# ── CORS — origens explícitas em vez de wildcard ──────────────────────────────
+# ── CORS — allow_credentials=False pois usamos header X-API-Key (M-05) ────────
 _raw_origins = os.getenv("CORS_ORIGINS", "http://localhost:8501")
 _allowed_origins = [o.strip() for o in _raw_origins.split(",") if o.strip()]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_allowed_origins,
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["GET", "POST"],
     allow_headers=["X-API-Key", "Content-Type", "Accept"],
 )
 
 # ── API Key authentication ────────────────────────────────────────────────────
-_API_KEY = os.getenv("API_KEY", "")
 _API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 
@@ -57,14 +83,10 @@ async def require_api_key(api_key: str | None = Security(_API_KEY_HEADER)) -> st
     /health é público — não usa esta dependência.
     """
     if not _API_KEY:
-        # sem API_KEY configurada → modo desenvolvimento, sem bloqueio
-        logger.warning(
-            "API_KEY não configurada — autenticação desativada. "
-            "Defina API_KEY no .env antes de ir para produção."
-        )
         return "dev-no-auth"
 
-    if api_key != _API_KEY:
+    # M-06 FIX: comparação constant-time para evitar timing attack
+    if not secrets.compare_digest(api_key or "", _API_KEY):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="API key inválida ou ausente. Forneça o header X-API-Key.",
@@ -76,12 +98,11 @@ async def require_api_key(api_key: str | None = Security(_API_KEY_HEADER)) -> st
 @app.get("/health", tags=["system"])
 async def health_check() -> dict:
     """Endpoint público de health check — sem autenticação."""
+    # M-04 FIX: não vazar informações de configuração interna
     return {
         "status": "healthy",
         "timestamp": datetime.now().isoformat(),
         "version": "1.0.0",
-        "auth_enabled": bool(_API_KEY),
-        "cors_origins": _allowed_origins,
     }
 
 

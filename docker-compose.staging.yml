@@ -29,7 +29,7 @@ services:
       - API_RELOAD=false
       - LOG_LEVEL=INFO
       - ENVIRONMENT=staging
-      - API_KEY=${API_KEY:-staging-test-key}
+      - API_KEY=${API_KEY}    # H-03 FIX: sem fallback previsível — exige injeção explícita
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:8601}
       - MLFLOW_TRACKING_URI=${MLFLOW_TRACKING_URI:-}
     depends_on:

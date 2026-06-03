@@ -20,8 +20,15 @@ import pytest
 import requests
 
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8100").rstrip("/")
-API_KEY      = os.getenv("API_KEY", "staging-test-key")
 TIMEOUT      = int(os.getenv("SMOKE_TIMEOUT", "10"))
+
+# H-13 FIX: sem fallback previsível — exige API_KEY definida no ambiente
+API_KEY = os.getenv("API_KEY", "")
+if not API_KEY:
+    raise RuntimeError(
+        "Variável de ambiente API_KEY não definida. "
+        "Exporte API_KEY=<sua-chave> antes de rodar os smoke tests."
+    )
 
 AUTH_HEADERS = {"X-API-Key": API_KEY}
 
