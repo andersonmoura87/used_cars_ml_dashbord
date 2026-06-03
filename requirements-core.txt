@@ -1,5 +1,5 @@
 # Dependências core — instaladas primeiro no Docker (camada de cache separada)
-pandas==2.1.4
+pandas==3.0.3
 numpy==1.24.3
 scikit-learn==1.3.2
 xgboost==2.0.2

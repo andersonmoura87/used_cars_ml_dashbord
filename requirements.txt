@@ -1,5 +1,5 @@
 # ETL e Processamento de Dados
-pandas==2.1.4
+pandas==3.0.3
 numpy==1.24.3
 sqlalchemy==2.0.23
 psycopg2-binary==2.9.9
