@@ -3,6 +3,9 @@ name: Promote Model to Production
 # Acionado manualmente via GitHub UI ou API — requer aprovação de revisor
 on:
   workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
     inputs:
       model_version:
         description: "Versão do modelo a promover (apenas dígitos; vazio = mais recente de Staging)"
