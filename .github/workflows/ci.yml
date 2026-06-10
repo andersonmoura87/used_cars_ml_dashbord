@@ -98,7 +98,7 @@ jobs:
           REDIS_DB: 0
           ENVIRONMENT: development
           API_KEY: ci-test-api-key
-        run: pytest --cov=src --cov-report=xml -v
+        run: pytest --ignore=tests/smoke --cov=src --cov-report=xml -v
 
       - name: Upload coverage
         # SHA corrigido — o anterior era inválido e causava "unable to find version"

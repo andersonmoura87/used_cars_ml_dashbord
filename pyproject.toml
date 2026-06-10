@@ -54,7 +54,8 @@ disallow_untyped_defs = false
 
 [tool.pytest.ini_options]
 minversion = "6.0"
-addopts = "-ra -q --cov=src --cov-report=term-missing"
+# --ignore=tests/smoke: smoke tests precisam de API rodando (integração, não unit)
+addopts = "-ra -q --cov=src --cov-report=term-missing --ignore=tests/smoke"
 testpaths = ["tests"]
 pythonpath = ["."]
 python_files = ["test_*.py"]
