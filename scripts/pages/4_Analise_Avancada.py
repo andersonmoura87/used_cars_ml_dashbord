@@ -1,3 +1,5 @@
+# DEPRECATED: use dashboard/pages/4_Analise_Avancada.py (canonical multipage app)
+# See scripts/pages/DEPRECATED.md for details.
 import streamlit as st
 import pandas as pd
 import numpy as np

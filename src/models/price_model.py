@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -294,10 +295,18 @@ class AdvancedPriceModel:
     
     # ── persistência ──────────────────────────────────────────────────────────
 
+    @staticmethod
+    def _data_hash(df: pd.DataFrame) -> str:
+        """SHA-256 dos primeiros 64 bytes do CSV serializado — identifica o dataset de treino."""
+        raw = df.to_csv(index=False).encode()
+        return hashlib.sha256(raw).hexdigest()
+
     def save(
         self,
         models_dir: Path | str = _MODELS_DIR,
         tag: str = "",
+        training_df: Optional[pd.DataFrame] = None,
+        metrics: Optional[Dict[str, float]] = None,
     ) -> Path:
         """
         Serializa o modelo completo (XGBoost + encoders + scaler + metadados)
@@ -341,6 +350,9 @@ class AdvancedPriceModel:
             "target": self.target,
             "feature_names": self.feature_names,
             "model_params": self.model.get_params(),
+            "training_rows": len(training_df) if training_df is not None else None,
+            "data_hash": self._data_hash(training_df) if training_df is not None else None,
+            "metrics": metrics or {},
         }
         meta_path.write_text(json.dumps(meta, indent=2))
 
@@ -423,7 +435,7 @@ class AdvancedPriceModel:
 
         model = cls(categorical_features, numerical_features, target)
         metrics = model.train(df, validation_method=validation_method)
-        model.save(models_dir=models_dir)
+        model.save(models_dir=models_dir, training_df=df, metrics=metrics)
         return model, metrics, False
 
     def _white_test(self, y_pred: pd.Series, residuals: pd.Series) -> Tuple[float, float]:

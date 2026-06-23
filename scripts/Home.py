@@ -1,3 +1,5 @@
+# DEPRECATED: use dashboard/Home.py (canonical multipage app)
+# See scripts/pages/DEPRECATED.md for details.
 import streamlit as st
 
 st.set_page_config(

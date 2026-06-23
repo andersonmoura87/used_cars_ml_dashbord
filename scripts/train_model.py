@@ -150,7 +150,12 @@ def main() -> None:
     for k, v in metrics.items():
         logger.info("  %-8s %.4f", k, v)
 
-    saved_path = model.save(models_dir=models_dir, tag=args.tag)
+    saved_path = model.save(
+        models_dir=models_dir,
+        tag=args.tag,
+        training_df=df,
+        metrics=metrics,
+    )
     logger.info("Artefato salvo em: %s", saved_path)
 
     # exibe resumo final
