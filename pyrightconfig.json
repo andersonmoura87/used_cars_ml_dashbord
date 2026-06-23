@@ -1,0 +1,18 @@
+{
+  "include": ["src", "scripts", "dashboard", "tests"],
+  "exclude": [
+    "**/node_modules",
+    "**/__pycache__",
+    "**/.*",
+    "venv310",
+    ".venv",
+    "venv"
+  ],
+  "pythonVersion": "3.11",
+  "typeCheckingMode": "basic",
+  "reportMissingImports": "none",
+  "reportMissingModuleSource": "none",
+  "reportOptionalMemberAccess": "warning",
+  "reportAttributeAccessIssue": "warning",
+  "useLibraryCodeForTypes": true
+}
