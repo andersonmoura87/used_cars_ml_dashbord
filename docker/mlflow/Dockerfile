@@ -1,14 +1,15 @@
 FROM python:3.11-slim
 
 LABEL maintainer="used-cars-ml"
-LABEL description="MLflow Tracking Server with PostgreSQL backend"
+LABEL description="MLflow Tracking Server (SQLite backend, local dev)"
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
+# Versão sincronizada com requirements.txt para compatibilidade de API
 RUN pip install --no-cache-dir \
-    mlflow==2.10.2 \
+    mlflow==2.19.0 \
     psycopg2-binary==2.9.9 \
     boto3==1.34.0
 

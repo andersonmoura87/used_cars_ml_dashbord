@@ -11,8 +11,6 @@ from typing import Any, Dict, List, Optional, Tuple
 import joblib
 import numpy as np
 import pandas as pd
-import shap
-import statsmodels.api as sm
 import xgboost as xgb
 from scipy import stats
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
@@ -22,6 +20,22 @@ from sklearn.preprocessing import LabelEncoder, RobustScaler
 logger = logging.getLogger(__name__)
 
 _MODELS_DIR = Path(__file__).parent.parent.parent / "models"
+
+# ── SHAP — importação opcional (análise de feature importance avançada) ────────
+try:
+    import shap as _shap
+    _SHAP_AVAILABLE = True
+except ImportError:  # pragma: no cover
+    _shap = None  # type: ignore[assignment]
+    _SHAP_AVAILABLE = False
+
+# ── statsmodels — importação opcional (análise de resíduos) ───────────────────
+try:
+    import statsmodels.api as sm
+    _STATSMODELS_AVAILABLE = True
+except ImportError:  # pragma: no cover
+    sm = None  # type: ignore[assignment]
+    _STATSMODELS_AVAILABLE = False
 
 # ── MLflow — importação opcional ──────────────────────────────────────────────
 try:
@@ -276,10 +290,12 @@ class AdvancedPriceModel:
                     'shap' calcula importância via SHAP TreeExplainer.
         """
         if method == 'shap':
+            if not _SHAP_AVAILABLE:
+                raise ImportError("shap não está instalado. Execute: pip install shap")
             if df is None:
                 raise ValueError("Parâmetro 'df' é obrigatório quando method='shap'.")
             X = self.prepare_features(df, fit=False)
-            explainer = shap.TreeExplainer(self.model)
+            explainer = _shap.TreeExplainer(self.model)
             shap_values = explainer.shap_values(X)
             importance = pd.Series(
                 np.abs(shap_values).mean(axis=0),
@@ -428,7 +444,7 @@ class AdvancedPriceModel:
 
         if latest.exists():
             try:
-                model = cls.load("latest")
+                model = cls.load(latest)
                 return model, {}, True
             except Exception as exc:
                 logger.warning("Falha ao carregar modelo salvo (%s). Retreinando…", exc)

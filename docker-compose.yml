@@ -37,6 +37,8 @@ services:
       - API_KEY=${API_KEY}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:8501}
       - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - MLFLOW_EXPERIMENT_NAME=${MLFLOW_EXPERIMENT_NAME:-used_cars_price_model}
+      - MLFLOW_REGISTERED_MODEL=${MLFLOW_REGISTERED_MODEL:-used_cars_price_model}
     networks:
       - public
       - backend
@@ -44,6 +46,8 @@ services:
       db:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      mlflow:
         condition: service_healthy
 
   db:
