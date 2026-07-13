@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 
 from src.etl.extract import extract_data
+from src.etl.ge_validation import validate_clean, validate_raw
 from src.etl.transform import transform_data
 from src.etl.load import load_data
 from src.database.connection import test_connection
@@ -49,12 +50,22 @@ def run_pipeline():
         logger.info("Iniciando etapa de extração")
         df, extract_metadata = extract_data()
         save_metadata(extract_metadata, 'extract')
-        
+
+        # Validação GE — dados brutos (não-bloqueante: warning apenas)
+        logger.info("Iniciando validação de dados brutos (Great Expectations)")
+        raw_ge_passed = validate_raw(df, raise_on_failure=False)
+        save_metadata({"ge_suite": "raw_cars_suite", "passed": raw_ge_passed}, 'ge_raw')
+
         # Transformação
         logger.info("Iniciando etapa de transformação")
         df_clean, df_removed, market_stats, transform_metadata = transform_data(df)
         save_metadata(transform_metadata, 'transform')
-        
+
+        # Validação GE — dados limpos (bloqueante: interrompe se dados não conformes)
+        logger.info("Iniciando validação de dados limpos (Great Expectations)")
+        validate_clean(df_clean, raise_on_failure=True)
+        save_metadata({"ge_suite": "clean_cars_suite", "passed": True}, 'ge_clean')
+
         # Carregamento
         logger.info("Iniciando etapa de carregamento")
         load_metadata = load_data(df_clean, market_stats)
@@ -69,7 +80,9 @@ def run_pipeline():
             'total_input_records': len(df),
             'total_clean_records': len(df_clean),
             'total_removed_records': len(df_removed),
-            'total_market_stats': len(market_stats)
+            'total_market_stats': len(market_stats),
+            'ge_raw_passed': raw_ge_passed,
+            'ge_clean_passed': True,
         }
         save_metadata(pipeline_metadata, 'pipeline')
         
