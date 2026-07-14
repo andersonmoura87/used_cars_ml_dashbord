@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from clean_prices import clean_prices, validate_cleaning
+from src.utils.clean_prices import clean_prices, validate_cleaning
 
 def test_cleaning():
     # Create test data

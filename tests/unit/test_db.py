@@ -1,3 +1,4 @@
+import pytest
 import pandas as pd
 from sqlalchemy import create_engine
 from dotenv import load_dotenv
@@ -11,6 +12,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+@pytest.mark.skip(reason="requer banco populado com ETL completo (cars, manufacturer_stats, etc.) — rodar manualmente")
 def test_database():
     """Testa a conexão com o banco e verifica os dados carregados."""
     load_dotenv()
