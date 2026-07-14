@@ -21,7 +21,7 @@ loguru==0.7.2
 # Relatórios e Visualização
 matplotlib==3.8.2
 seaborn==0.13.0
-reportlab==4.0.8
+reportlab==4.5.1
 
 # M-13 FIX: 1.29.0 desatualizado com CVEs; atualizado para 1.40.1
 # Dashboard e Visualização
