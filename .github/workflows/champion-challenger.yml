@@ -131,39 +131,50 @@ jobs:
         if: github.event_name == 'pull_request' && always()
         uses: actions/github-script@v7
         with:
-          script: |
+          script: >
             const fs = require('fs');
+
             let result = {};
-            try {
-              result = JSON.parse(fs.readFileSync('comparison-result.json', 'utf8'));
-            } catch (e) {
-              result = { verdict: 'Resultado não disponível', challenger_wins: false };
-            }
-            const icon = result.challenger_wins ? '✅' : '❌';
-            const champion = result.champion || {};
-            const challenger = result.challenger || {};
-            const reasons = (result.reasons || []).map(r => `- ${r}`).join('\n');
-            const body = `## ${icon} Champion vs Challenger — \`${result.model_name || 'used_cars_price_model'}\`
 
-**Veredicto:** ${result.verdict || 'N/A'}
+            try { result = JSON.parse(fs.readFileSync('comparison-result.json', 'utf8')); }
+            catch (e) { result = { verdict: 'Resultado nao disponivel', challenger_wins: false }; }
 
-| Modelo | Versão | R² | RMSE |
-|--------|--------|----|------|
-| Champion | v${champion.version || '—'} | ${champion.r2 != null ? champion.r2.toFixed(4) : 'N/A'} | ${champion.rmse != null ? champion.rmse.toFixed(2) : 'N/A'} |
-| Challenger | v${challenger.version || '—'} | ${challenger.r2 != null ? challenger.r2.toFixed(4) : 'N/A'} | ${challenger.rmse != null ? challenger.rmse.toFixed(2) : 'N/A'} |
+            const icon = result.challenger_wins ? ':white_check_mark:' : ':x:';
 
-**Análise:**
-${reasons}
+            const champ = result.champion || {};
 
-${result.challenger_wins
-  ? '> Challenger promovido automaticamente para **Staging**. Para promover para Production, use o workflow `Promote Model to Production`.'
-  : '> Champion mantido em Production. O challenger permanece em Staging para análise.'}
-`;
+            const chal = result.challenger || {};
+
+            const r2c  = champ.r2   != null ? champ.r2.toFixed(4)   : 'N/A';
+
+            const rmsc = champ.rmse != null ? champ.rmse.toFixed(2)  : 'N/A';
+
+            const r2ch = chal.r2    != null ? chal.r2.toFixed(4)     : 'N/A';
+
+            const rmch = chal.rmse  != null ? chal.rmse.toFixed(2)   : 'N/A';
+
+            const reasons = (result.reasons || []).map(r => '- ' + r).join('\n');
+
+            const note = result.challenger_wins
+              ? 'Challenger promovido para Staging. Para Production use o workflow Promote Model.'
+              : 'Champion mantido. Challenger permanece em Staging para analise.';
+
+            const rows = [
+              'Modelo | Versao | R2 | RMSE',
+              '-------|--------|----|-----',
+              'Champion   v' + (champ.version || '-') + ' | ' + r2c + ' | ' + rmsc,
+              'Challenger v' + (chal.version  || '-') + ' | ' + r2ch + ' | ' + rmch
+            ].join('\n');
+
+            const body = icon + ' Champion vs Challenger\n\nVeredicto: ' +
+              (result.verdict || 'N/A') + '\n\n' + rows +
+              '\n\nAnalise:\n' + reasons + '\n\n' + note;
+
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body,
+              body: body
             });
 
       # ── 5. Falhar o job se challenger perdeu (bloqueia PR merge) ───────────

@@ -1,0 +1,205 @@
+name: Automated Retraining Pipeline
+
+# Retreina o modelo semanalmente ou quando o dado/modelo for alterado.
+# Fluxo:
+#   1. Detecta data drift (KS test + PSI)
+#   2. Se drift detectado → treina novo modelo com MLflow tracking
+#   3. Compara challenger vs champion (champion/challenger)
+#   4. Se challenger vence → promove para Staging automaticamente
+#   5. Promoção para Production sempre manual via promote-model.yml
+
+on:
+  # Semanal: segunda-feira às 06:00 UTC (fora do horário de pico BR)
+  schedule:
+    - cron: "0 6 * * 1"
+
+  # Execução manual com parâmetros opcionais
+  workflow_dispatch:
+    inputs:
+      force_retrain:
+        description: "Forçar retreinamento mesmo sem drift?"
+        required: false
+        type: boolean
+        default: false
+      dry_run:
+        description: "Dry-run: analisa e treina, mas não promove"
+        required: false
+        type: boolean
+        default: false
+      min_improvement:
+        description: "Melhoria mínima no R² para o challenger vencer (ex: 0.001)"
+        required: false
+        type: string
+        default: "0.001"
+      save_reference:
+        description: "Atualizar referência de drift após retreinamento?"
+        required: false
+        type: boolean
+        default: false
+
+  # Chamável por outros workflows (ex: após merge de PR com dados novos)
+  workflow_call:
+    inputs:
+      force_retrain:
+        required: false
+        type: boolean
+        default: false
+      dry_run:
+        required: false
+        type: boolean
+        default: false
+      min_improvement:
+        required: false
+        type: string
+        default: "0.001"
+    outputs:
+      drift_detected:
+        description: "'true' se drift foi detectado"
+        value: ${{ jobs.retrain.outputs.drift_detected }}
+      challenger_wins:
+        description: "'true' se o novo modelo superou o champion"
+        value: ${{ jobs.retrain.outputs.challenger_wins }}
+      challenger_version:
+        description: "Versão do challenger treinado"
+        value: ${{ jobs.retrain.outputs.challenger_version }}
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  PYTHON_VERSION: "3.11"
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  retrain:
+    name: Retrain Pipeline
+    runs-on: ubuntu-latest
+
+    outputs:
+      drift_detected:    ${{ steps.pipeline.outputs.drift_detected }}
+      retrain_triggered: ${{ steps.pipeline.outputs.retrain_triggered }}
+      challenger_wins:   ${{ steps.pipeline.outputs.challenger_wins }}
+      challenger_version: ${{ steps.pipeline.outputs.challenger_version }}
+      drift_score:        ${{ steps.pipeline.outputs.drift_score }}
+
+    steps:
+      # ── Setup ────────────────────────────────────────────────────────────────
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install mlflow==2.19.0
+
+      # ── Restaurar dados de referência de drift (cache entre runs) ────────────
+      - name: Restore drift reference cache
+        uses: actions/cache@v4
+        with:
+          path: data/quality/drift_reference.parquet
+          key: drift-reference-${{ github.repository }}-${{ hashFiles('data/processed/cars_abt.csv') }}
+          restore-keys: |
+            drift-reference-${{ github.repository }}-
+
+      # ── Pipeline principal ───────────────────────────────────────────────────
+      - name: Run retrain pipeline
+        id: pipeline
+        env:
+          MLFLOW_TRACKING_URI:      ${{ secrets.MLFLOW_TRACKING_URI }}
+          MLFLOW_EXPERIMENT_NAME:   ${{ secrets.MLFLOW_EXPERIMENT_NAME || 'used_cars_price_model' }}
+          MLFLOW_REGISTERED_MODEL:  ${{ secrets.MLFLOW_REGISTERED_MODEL || 'used_cars_price_model' }}
+          FORCE_FLAG:               ${{ inputs.force_retrain }}
+          DRY_RUN_FLAG:             ${{ inputs.dry_run }}
+          MIN_IMPROVEMENT:          ${{ inputs.min_improvement || '0.001' }}
+          SAVE_REFERENCE:           ${{ inputs.save_reference }}
+        run: |
+          ARGS=(
+            --min-improvement "${MIN_IMPROVEMENT}"
+            --tag "weekly_$(date +%Y%m%d)"
+          )
+          [ "$FORCE_FLAG"    = "true" ] && ARGS+=(--force)
+          [ "$DRY_RUN_FLAG"  = "true" ] && ARGS+=(--dry-run)
+          [ "$SAVE_REFERENCE" = "true" ] && ARGS+=(--save-reference)
+
+          python scripts/retrain.py "${ARGS[@]}"
+
+      # ── Upload artefatos ─────────────────────────────────────────────────────
+      - name: Upload drift + comparison reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: retrain-reports-${{ github.run_number }}
+          path: |
+            data/quality/drift_report_*.json
+            data/quality/comparison_*.json
+          if-no-files-found: ignore
+
+      # ── Salvar referência atualizada no cache ────────────────────────────────
+      - name: Save drift reference
+        if: inputs.save_reference == true && steps.pipeline.outputs.drift_detected == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: data/quality/drift_reference.parquet
+          key: drift-reference-${{ github.repository }}-${{ hashFiles('data/processed/cars_abt.csv') }}
+
+      # ── Resumo no Step Summary ───────────────────────────────────────────────
+      - name: Post pipeline summary
+        if: always()
+        run: |
+          {
+            echo "## :arrows_counterclockwise: Retraining Pipeline Summary"
+            echo ""
+            echo "| Etapa | Resultado |"
+            echo "|-------|-----------|"
+            echo "| Drift detectado   | ${{ steps.pipeline.outputs.drift_detected    || 'N/A' }} |"
+            echo "| Retreino ativado  | ${{ steps.pipeline.outputs.retrain_triggered || 'N/A' }} |"
+            echo "| Challenger venceu | ${{ steps.pipeline.outputs.challenger_wins   || 'N/A' }} |"
+            echo "| Versão challenger | ${{ steps.pipeline.outputs.challenger_version || 'N/A' }} |"
+            echo "| Drift score       | ${{ steps.pipeline.outputs.drift_score       || 'N/A' }} |"
+            echo ""
+            echo "> Para promover o challenger para Production, use o workflow **Promote Model to Production**."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ── Notificação Slack (opcional) ──────────────────────────────────────────
+  notify:
+    name: Notify Result
+    runs-on: ubuntu-latest
+    needs: retrain
+    if: always()
+    env:
+      SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+
+    steps:
+      - name: Notify Slack — challenger won
+        if: >
+          env.SLACK_WEBHOOK != '' &&
+          needs.retrain.outputs.challenger_wins == 'true'
+        uses: rtCamp/action-slack-notify@v2
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+          SLACK_MESSAGE: >
+            :robot_face: *Novo modelo treinado e promovido para Staging!*
+            Versão: `${{ needs.retrain.outputs.challenger_version }}` |
+            Drift score: `${{ needs.retrain.outputs.drift_score }}`.
+            Para promover para Production use o workflow *Promote Model*.
+          SLACK_COLOR: "good"
+          SLACK_TITLE: "Retraining Pipeline — Challenger Wins"
+
+      - name: Notify Slack — no retrain / champion kept
+        if: >
+          env.SLACK_WEBHOOK != '' &&
+          needs.retrain.outputs.retrain_triggered == 'false'
+        uses: rtCamp/action-slack-notify@v2
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+          SLACK_MESSAGE: >
+            :information_source: *Retreinamento semanal verificado.*
+            Sem drift detectado — champion mantido em Production.
+          SLACK_COLOR: "#439FE0"
+          SLACK_TITLE: "Retraining Pipeline — No Drift"

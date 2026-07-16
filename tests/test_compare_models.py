@@ -23,9 +23,9 @@ from scripts.compare_models import (
 def _make_metrics(
     version: str = "1",
     stage: str = "Production",
-    r2: float = 0.85,
-    rmse: float = 3000.0,
-    mae: float = 2000.0,
+    r2: float | None = 0.85,
+    rmse: float | None = 3000.0,
+    mae: float | None = 2000.0,
 ) -> ModelMetrics:
     return ModelMetrics(
         version=version,
