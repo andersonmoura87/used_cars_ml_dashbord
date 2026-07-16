@@ -18,6 +18,18 @@ slowapi==0.1.9
 # Logging e Monitoramento
 loguru==0.7.2
 
+# UCM-22: Observabilidade — Prometheus + OpenTelemetry
+# Prometheus: expõe /metrics com métricas HTTP automáticas (fastapi-instrumentator)
+prometheus-fastapi-instrumentator==6.1.0
+prometheus-client==0.20.0
+# OpenTelemetry core (traces)
+opentelemetry-api==1.27.0
+opentelemetry-sdk==1.27.0
+# FastAPI auto-instrumentation (gera spans por request)
+opentelemetry-instrumentation-fastapi==0.48b0
+# Exportador OTLP gRPC (envia traces para Jaeger / OTEL Collector)
+opentelemetry-exporter-otlp-proto-grpc==1.27.0
+
 # Relatórios e Visualização
 matplotlib==3.10.9
 seaborn==0.13.0

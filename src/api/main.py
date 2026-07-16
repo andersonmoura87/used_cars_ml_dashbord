@@ -13,6 +13,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.security.api_key import APIKeyHeader
 
+# UCM-22: Observabilidade — importação lazy para evitar falha se pacotes opcionais ausentes
+from src.api.telemetry import instrument_app, set_build_info, setup_telemetry
+
 # M-02: Rate limiting
 try:
     from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -61,13 +64,22 @@ app = FastAPI(
     title="Used Cars Market Analysis API",
     description=(
         "API for analyzing used car listings data with focus on financing options.\n\n"
-        "**Authentication**: all endpoints (except `/health`) require the header "
+        "**Authentication**: all endpoints (except `/health` and `/metrics`) require the header "
         "`X-API-Key: <your_key>` configured in the `API_KEY` environment variable."
     ),
     version="1.0.0",
     docs_url=_docs_url,
     redoc_url=_redoc_url,
     openapi_url=_openapi_url,
+)
+
+# UCM-22: inicializar OTEL + Prometheus e expor /metrics
+setup_telemetry(service_version="1.0.0")
+instrument_app(app)
+set_build_info(
+    version="1.0.0",
+    environment=_ENVIRONMENT,
+    git_sha=os.getenv("GIT_SHA", "unknown"),
 )
 
 # ── M-02: Rate limiting ───────────────────────────────────────────────────────
@@ -148,7 +160,8 @@ async def require_api_key(api_key: str | None = Security(_API_KEY_HEADER)) -> st
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="API key inválida ou ausente. Forneça o header X-API-Key.",
         )
-    return api_key
+    # api_key é str aqui (compare_digest falhou se fosse None/vazia)
+    return api_key or ""
 
 
 # ── endpoints públicos ────────────────────────────────────────────────────────

@@ -136,12 +136,72 @@ services:
       retries: 10
       start_period: 30s
 
+  # UCM-22: Prometheus — coleta métricas da API (/metrics)
+  # Para usar: docker compose --profile monitoring up prometheus grafana
+  prometheus:
+    profiles: [monitoring]
+    image: prom/prometheus:v2.51.2
+    ports:
+      - "127.0.0.1:9090:9090"
+    volumes:
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"
+      - "--web.enable-lifecycle"
+    networks:
+      - public
+      - backend
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/-/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # UCM-22: Grafana — dashboards de observabilidade
+  # Credenciais default: admin / admin (altere em produção via GF_SECURITY_ADMIN_PASSWORD)
+  grafana:
+    profiles: [monitoring]
+    image: grafana/grafana:10.4.2
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./docker/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_AUTH_ANONYMOUS_ENABLED=false
+      - GF_SERVER_ROOT_URL=http://localhost:3000
+      - GF_LOG_LEVEL=warn
+      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/var/lib/grafana/dashboards/used-cars-ml.json
+    networks:
+      - public
+      - backend
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:3000/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
 volumes:
   postgres_data:
   redis_data:
   pgadmin_data:
   mlflow_db:
   mlflow_artifacts:
+  prometheus_data:
+  grafana_data:
 
 # Low-FIX: isolamento de rede
 #   public  → app exposto ao host (via port bindings)

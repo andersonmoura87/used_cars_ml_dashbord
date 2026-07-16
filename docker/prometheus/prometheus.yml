@@ -1,0 +1,32 @@
+global:
+  scrape_interval:     15s  # coletar métricas a cada 15 segundos
+  evaluation_interval: 15s  # avaliar regras de alerta a cada 15 segundos
+  scrape_timeout:      10s
+
+  external_labels:
+    project: "used_cars_ml"
+    environment: "development"
+
+# ── Scrape configs ────────────────────────────────────────────────────────────
+scrape_configs:
+
+  # API FastAPI — expõe /metrics via prometheus-fastapi-instrumentator
+  - job_name: "used_cars_api"
+    static_configs:
+      - targets: ["app:8000"]
+    metrics_path: "/metrics"
+    scrape_interval: 15s
+    honor_labels: true
+
+  # MLflow Tracking Server — métricas internas do MLflow
+  - job_name: "mlflow"
+    static_configs:
+      - targets: ["mlflow:5000"]
+    metrics_path: "/metrics"
+    scrape_interval: 30s
+
+  # Prometheus self-monitoring
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+    scrape_interval: 30s
