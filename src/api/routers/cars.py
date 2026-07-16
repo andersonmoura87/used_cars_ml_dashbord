@@ -101,10 +101,10 @@ async def get_financing_stats(
     try:
         query = db.query(
             func.count(CarORM.id).label("total_cars"),
-            func.count(CarORM.id).filter(CarORM.has_installments == True).label("total_financed"),
-            func.avg(CarORM.monthly_payment).filter(CarORM.has_installments == True).label("avg_monthly_payment"),
-            func.avg(CarORM.down_payment).filter(CarORM.has_installments == True).label("avg_down_payment"),
-            func.avg(CarORM.installments).filter(CarORM.has_installments == True).label("avg_installments"),
+            func.count(CarORM.id).filter(CarORM.has_installments == True).label("total_financed"),  # noqa: E712
+            func.avg(CarORM.monthly_payment).filter(CarORM.has_installments == True).label("avg_monthly_payment"),  # noqa: E712
+            func.avg(CarORM.down_payment).filter(CarORM.has_installments == True).label("avg_down_payment"),  # noqa: E712
+            func.avg(CarORM.installments).filter(CarORM.has_installments == True).label("avg_installments"),  # noqa: E712
         )
 
         if manufacturer:

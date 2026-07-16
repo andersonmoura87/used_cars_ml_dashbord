@@ -1,0 +1,17 @@
+[flake8]
+max-line-length = 120
+exclude =
+    __pycache__,
+    .git,
+    .venv,
+    venv,
+    build,
+    dist,
+    scripts/analysis,
+    sandbox
+
+# E712: SQLAlchemy usa == True/False para gerar SQL correto (CarORM.field == True)
+# Suprimir apenas nos routers da API onde são expressões de filtro ORM
+per-file-ignores =
+    src/api/routers/*.py: E712
+    src/api/routers/financing.py: E712

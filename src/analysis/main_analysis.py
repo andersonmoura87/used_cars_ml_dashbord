@@ -163,13 +163,13 @@ def main():
     df_clean = run_data_quality_analysis(df)
     
     # 2. Análise de preços
-    fair_prices = run_price_analysis(df_clean)
-    
+    run_price_analysis(df_clean)
+
     # 3. Análise de mercado
-    market_results = run_market_analysis(df_clean)
-    
+    run_market_analysis(df_clean)
+
     # 4. Modelagem de preços
-    model_results = train_price_model(df_clean)
+    train_price_model(df_clean)
     
     logger.info('Análise completa finalizada!')
 

@@ -23,7 +23,7 @@ def test_connection():
         
         # Testar conexão
         with engine.connect() as conn:
-            result = conn.execute(text("SELECT 1"))
+            conn.execute(text("SELECT 1"))
             logger.info("Conexão com o banco de dados estabelecida com sucesso!")
             return True
     except Exception as e:

@@ -172,3 +172,4 @@ async def get_year_stats(
     except Exception as e:
         logger.error(f"Error getting year stats: {str(e)}")
         raise HTTPException(status_code=500, detail="Error retrieving year statistics") 
+

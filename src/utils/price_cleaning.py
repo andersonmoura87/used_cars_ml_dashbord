@@ -53,7 +53,7 @@ def extract_payment_info(description: str) -> Dict:
     
     return results
 
-def estimate_total_price(payment_info: Dict) -> float:
+def estimate_total_price(payment_info: Dict) -> float | None:
     """
     Estima o preço total baseado nas informações de pagamento.
     

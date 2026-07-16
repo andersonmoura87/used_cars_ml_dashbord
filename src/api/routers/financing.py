@@ -31,7 +31,7 @@ async def get_installment_analysis(
             func.avg(CarORM.installments).label("avg_term"),
             func.min(CarORM.installments).label("min_term"),
             func.max(CarORM.installments).label("max_term")
-        ).filter(CarORM.has_installments == True)
+        ).filter(CarORM.has_installments == True)  # noqa: E712
 
         if min_price:
             query = query.filter(CarORM.price >= min_price)
@@ -150,3 +150,4 @@ async def get_price_range_financing_analysis(db: Session = Depends(get_db)):
     except Exception as e:
         logger.error(f"Error getting price range analysis: {str(e)}")
         raise HTTPException(status_code=500, detail="Error retrieving price range analysis") 
+
