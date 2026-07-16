@@ -111,12 +111,24 @@ def run_pipeline():
         ]
         lineage.complete(run_id, outputs=[clean_out, MANUFACTURER_STATS_DATASET])
 
+        # UCM-22 / UCM-26: métricas + alerta (opcional — não quebra se ausentes)
+        try:
+            from src.api.telemetry import record_etl_run
+            record_etl_run("success")
+        except Exception:
+            pass
+
         logger.info("Pipeline ETL concluído com sucesso (lineage run_id=%s)", run_id)
         return True
 
     except Exception as exc:
         logger.error("Erro no pipeline ETL: %s", str(exc))
         lineage.fail(run_id, error=str(exc))
+        try:
+            from src.api.telemetry import record_etl_run
+            record_etl_run("failure")
+        except Exception:
+            pass
         return False
 
 if __name__ == "__main__":

@@ -97,6 +97,7 @@ jobs:
           pip install -r requirements.txt
 
       - name: Run ETL Pipeline
+        id: etl
         env:
           DB_USER:     ${{ secrets.DB_USER }}
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
@@ -104,9 +105,44 @@ jobs:
           DB_PORT:     ${{ secrets.DB_PORT }}
           DB_NAME:     ${{ secrets.DB_NAME }}
         run: |
-          python scripts/etl/run_pipeline.py || \
-          python -m src.etl.run_pipeline || \
-          echo "::warning::ETL pipeline não executado — verifique o caminho do script"
+          set +e
+          python -m src.etl.run_pipeline
+          ETL_RC=$?
+          echo "etl_exit_code=$ETL_RC" >> "$GITHUB_OUTPUT"
+          if [ $ETL_RC -ne 0 ]; then
+            echo "::warning::ETL pipeline retornou exit $ETL_RC"
+          fi
+          exit 0
+
+      # ── UCM-26: tendência de qualidade + alerta Slack ────────────────────────
+      - name: Build quality trend dashboard
+        id: quality
+        if: always()
+        run: |
+          python scripts/quality_trend.py --days 30 || \
+            echo "::warning::quality_trend.py falhou — verifique data/quality/"
+
+      - name: Notify Slack — ETL result
+        if: always()
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+          ENVIRONMENT: production
+          GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          ETL_RC: ${{ steps.etl.outputs.etl_exit_code }}
+        run: |
+          STATUS="success"
+          ERROR=""
+          if [ "${ETL_RC:-0}" != "0" ]; then
+            STATUS="failure"
+            ERROR="ETL pipeline exit code ${ETL_RC}"
+          fi
+          # Preferir metadados do último run se existirem
+          META=$(ls -t logs/metadata/pipeline_*.json 2>/dev/null | head -1 || true)
+          ARGS=(--status "$STATUS" --environment "$ENVIRONMENT" --run-url "$GITHUB_RUN_URL")
+          [ -n "$ERROR" ] && ARGS+=(--error "$ERROR")
+          [ -n "$META" ] && ARGS+=(--from-metadata "$META")
+          python scripts/notify_etl.py "${ARGS[@]}" || \
+            echo "::warning::notify_etl falhou (webhook ausente ou rede)"
 
       - name: Archive production artifacts
         uses: actions/upload-artifact@v4
@@ -115,5 +151,7 @@ jobs:
           name: pipeline-artifacts-${{ github.run_number }}
           path: |
             data/quality/
+            docs/quality/
             reports/
+            logs/metadata/
           if-no-files-found: ignore

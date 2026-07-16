@@ -146,12 +146,63 @@ def _run_ge_validation(
 
 
 def _save_result(result: Dict[str, Any], suite_name: str) -> Path:
-    """Persiste o resultado da validação como JSON."""
+    """Persiste o resultado da validação como JSON (GE raw + resumo compacto)."""
     _VALIDATIONS_DIR.mkdir(parents=True, exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     path = _VALIDATIONS_DIR / f"{suite_name}_{ts}.json"
     path.write_text(json.dumps(result, indent=2, default=str))
+
+    # UCM-26: resumo compacto para tendência de qualidade
+    _save_quality_summary(result, suite_name, ts)
     return path
+
+
+def _save_quality_summary(result: Dict[str, Any], suite_name: str, ts: str) -> Path | None:
+    """
+    Grava resumo compacto em data/quality/ge_summary_*.json para o
+    dashboard de tendência (UCM-26).
+    """
+    quality_dir = _ROOT / "data" / "quality"
+    try:
+        quality_dir.mkdir(parents=True, exist_ok=True)
+        stats = result.get("statistics", {})
+        evaluated = int(stats.get("evaluated_expectations", 0) or 0)
+        successful = int(stats.get("successful_expectations", 0) or 0)
+        failed = int(stats.get("unsuccessful_expectations", 0) or 0)
+        pass_rate = (successful / evaluated) if evaluated else 0.0
+
+        failed_expectations = []
+        for res in result.get("results", []):
+            if not res.get("success"):
+                cfg = res.get("expectation_config") or {}
+                failed_expectations.append({
+                    "type": cfg.get("expectation_type", "unknown"),
+                    "column": (cfg.get("kwargs") or {}).get("column", "table"),
+                })
+
+        summary = {
+            "suite": suite_name,
+            "timestamp": ts,
+            "evaluated_at": datetime.now().isoformat(),
+            "success": bool(result.get("success", False)),
+            "evaluated": evaluated,
+            "successful": successful,
+            "failed": failed,
+            "pass_rate": round(pass_rate, 4),
+            "failed_expectations": failed_expectations[:20],
+        }
+        summary_path = quality_dir / f"ge_summary_{suite_name}_{ts}.json"
+        summary_path.write_text(json.dumps(summary, indent=2, default=str))
+
+        # Append to history JSONL (fonte do quality_trend)
+        history_path = quality_dir / "quality_history.jsonl"
+        with open(history_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(summary, default=str) + "\n")
+
+        return summary_path
+    except Exception as exc:  # pragma: no cover
+        logger.warning("[GE] Falha ao salvar resumo de qualidade: %s", exc)
+        return None
 
 
 def _log_summary(result: Dict[str, Any], suite_name: str) -> bool:
