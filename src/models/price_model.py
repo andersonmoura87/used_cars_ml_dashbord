@@ -8,6 +8,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from src.etl.lineage import LineageClient, CLEAN_CARS_DATASET, MODEL_FILE_DATASET
+
 import joblib
 import numpy as np
 import pandas as pd
@@ -171,7 +173,36 @@ class AdvancedPriceModel:
                 },
             )
 
+        # ── UCM-24: linhagem de dados do treino ──────────────────────────────
+        self._emit_training_lineage(metrics=metrics, n_records=len(df))
+
         return metrics
+
+    def _emit_training_lineage(
+        self,
+        metrics: Dict[str, float],
+        n_records: int,
+    ) -> None:
+        """Emite evento OpenLineage para a execução de treino do modelo."""
+        model_output = dict(MODEL_FILE_DATASET)
+        model_output["fields"] = [
+            {"name": "r2_score",  "type": "DOUBLE"},
+            {"name": "rmse",      "type": "DOUBLE"},
+            {"name": "mae",       "type": "DOUBLE"},
+            {"name": "n_records", "type": "INTEGER"},
+        ]
+
+        lineage = LineageClient(job_name="train_price_model")
+        run_id = lineage.start(
+            inputs=[CLEAN_CARS_DATASET],
+            outputs=[model_output],
+            description=(
+                f"Treino do modelo XGBoost de preços de veículos. "
+                f"R²={metrics.get('r2', 0):.4f}  RMSE={metrics.get('rmse', 0):.2f}  "
+                f"n_records={n_records}"
+            ),
+        )
+        lineage.complete(run_id, outputs=[model_output])
 
     def _log_to_mlflow(
         self,

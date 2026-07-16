@@ -8,6 +8,12 @@ from src.etl.ge_validation import validate_clean, validate_raw
 from src.etl.transform import transform_data
 from src.etl.load import load_data
 from src.database.connection import test_connection
+from src.etl.lineage import (
+    LineageClient,
+    RAW_CARS_DATASET,
+    CLEAN_CARS_DATASET,
+    MANUFACTURER_STATS_DATASET,
+)
 
 # Configurar logging
 logging.basicConfig(
@@ -36,15 +42,27 @@ def save_metadata(metadata, step):
         logger.error(f"Erro ao salvar metadados de {step}: {str(e)}")
 
 def run_pipeline():
-    """Executa o pipeline ETL completo."""
+    """Executa o pipeline ETL completo com rastreamento de linhagem (OpenLineage)."""
+    pipeline_start = datetime.now()
+    logger.info("Iniciando pipeline ETL")
+
+    # UCM-24: inicializar cliente de linhagem
+    lineage = LineageClient(job_name="etl_run_pipeline")
+
+    run_id = lineage.start(
+        inputs=[RAW_CARS_DATASET],
+        outputs=[CLEAN_CARS_DATASET, MANUFACTURER_STATS_DATASET],
+        description=(
+            "Pipeline ETL completo: extração → validação GE → transformação → carga PostgreSQL. "
+            "Input: used_cars.csv  |  Output: tabelas cars + manufacturer_stats"
+        ),
+    )
+
     try:
-        pipeline_start = datetime.now()
-        logger.info("Iniciando pipeline ETL")
-        
         # Testar conexão com o banco
         if not test_connection():
             raise Exception("Não foi possível conectar ao banco de dados")
-        
+
         # Extração
         logger.info("Iniciando etapa de extração")
         df, extract_metadata = extract_data()
@@ -69,7 +87,7 @@ def run_pipeline():
         logger.info("Iniciando etapa de carregamento")
         load_metadata = load_data(df_clean, market_stats)
         save_metadata(load_metadata, 'load')
-        
+
         # Metadados do pipeline
         pipeline_end = datetime.now()
         pipeline_metadata = {
@@ -82,13 +100,23 @@ def run_pipeline():
             'total_market_stats': len(market_stats),
             'ge_raw_passed': raw_ge_passed,
             'ge_clean_passed': True,
+            'lineage_run_id': run_id,
         }
         save_metadata(pipeline_metadata, 'pipeline')
-        
-        logger.info("Pipeline ETL concluído com sucesso")
+
+        # UCM-24: emitir COMPLETE com schema final das saídas
+        clean_out = dict(CLEAN_CARS_DATASET)
+        clean_out["fields"] = list(clean_out.get("fields", [])) + [
+            {"name": "row_count", "type": "INTEGER"},
+        ]
+        lineage.complete(run_id, outputs=[clean_out, MANUFACTURER_STATS_DATASET])
+
+        logger.info("Pipeline ETL concluído com sucesso (lineage run_id=%s)", run_id)
         return True
-    except Exception as e:
-        logger.error(f"Erro no pipeline ETL: {str(e)}")
+
+    except Exception as exc:
+        logger.error("Erro no pipeline ETL: %s", str(exc))
+        lineage.fail(run_id, error=str(exc))
         return False
 
 if __name__ == "__main__":

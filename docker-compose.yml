@@ -194,6 +194,47 @@ services:
       retries: 5
       start_period: 20s
 
+  # UCM-24: Marquez — backend de lineage OpenLineage
+  # Para usar: docker compose --profile lineage up marquez marquez-web
+  # API disponível em: http://localhost:5001
+  # UI disponível em:  http://localhost:3001
+  marquez:
+    profiles: [lineage]
+    image: marquezproject/marquez:0.47.0
+    ports:
+      - "127.0.0.1:5001:5000"   # API OpenLineage
+      - "127.0.0.1:5002:5001"   # Admin
+    environment:
+      - MARQUEZ_CONFIG=/usr/src/app/marquez.dev.yml
+    volumes:
+      - marquez_data:/var/lib/marquez
+    networks:
+      - public
+      - backend
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/api/v1/namespaces"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  marquez-web:
+    profiles: [lineage]
+    image: marquezproject/marquez-web:0.47.0
+    ports:
+      - "127.0.0.1:3001:3000"
+    environment:
+      - MARQUEZ_HOST=marquez
+      - MARQUEZ_PORT=5000
+    networks:
+      - public
+      - backend
+    depends_on:
+      marquez:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   redis_data:
@@ -202,6 +243,7 @@ volumes:
   mlflow_artifacts:
   prometheus_data:
   grafana_data:
+  marquez_data:
 
 # Low-FIX: isolamento de rede
 #   public  → app exposto ao host (via port bindings)
