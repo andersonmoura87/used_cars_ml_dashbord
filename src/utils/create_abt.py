@@ -3,7 +3,6 @@ import numpy as np
 from sqlalchemy import create_engine
 from dotenv import load_dotenv
 import os
-from datetime import datetime
 import pytz
 
 def create_abt():

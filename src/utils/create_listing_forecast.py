@@ -5,8 +5,8 @@ from dotenv import load_dotenv
 import os
 from datetime import datetime, timedelta
 import pytz
-from sklearn.preprocessing import StandardScaler, LabelEncoder
-from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
+from sklearn.preprocessing import LabelEncoder
+from sklearn.ensemble import RandomForestClassifier
 import xgboost as xgb
 from prophet import Prophet
 import joblib

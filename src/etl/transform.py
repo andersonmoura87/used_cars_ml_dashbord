@@ -1,5 +1,4 @@
 import pandas as pd
-import numpy as np
 import logging
 from datetime import datetime
 import re
@@ -43,7 +42,7 @@ def extract_price_info(price_str, description):
             price = float(str(price_str).replace('$', '').replace(',', '').strip())
         
         return price
-    except:
+    except (ValueError, TypeError, AttributeError):
         return None
 
 def clean_price_data(df):

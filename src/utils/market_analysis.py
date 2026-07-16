@@ -1,11 +1,9 @@
 import pandas as pd
-import numpy as np
 from scipy import stats
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
-from typing import Dict, List, Tuple, Any
+from typing import Dict, Tuple, Any
 import logging
-from datetime import datetime, timedelta
 from prophet import Prophet
 
 logger = logging.getLogger(__name__)

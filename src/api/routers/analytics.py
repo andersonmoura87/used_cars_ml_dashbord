@@ -1,6 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from typing import List, Optional
+from typing import Optional
 from ..database import get_db
 from ..models import CarORM, ManufacturerStats, StateStats, YearStats
 from sqlalchemy import func

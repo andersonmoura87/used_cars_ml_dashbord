@@ -1,9 +1,7 @@
 import pandas as pd
-import numpy as np
 from typing import Tuple
 import os
 from dotenv import load_dotenv
-import psycopg2
 from sqlalchemy import create_engine
 
 def get_db_connection():

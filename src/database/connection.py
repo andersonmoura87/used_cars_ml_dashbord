@@ -44,7 +44,6 @@ def create_db_engine():
             pool_pre_ping=True,   # detecta conexões mortas antes de usar
             connect_args={
                 "client_encoding": "utf8",
-                "options": "-c client_encoding=utf8",
                 # statement_timeout em ms — protege contra queries longas
                 "options": (
                     "-c client_encoding=utf8 "

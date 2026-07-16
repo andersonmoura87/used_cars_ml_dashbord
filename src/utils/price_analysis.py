@@ -3,8 +3,7 @@ import numpy as np
 from scipy import stats
 from sklearn.preprocessing import RobustScaler
 from sklearn.linear_model import HuberRegressor
-from sklearn.model_selection import cross_val_score
-from typing import Dict, Tuple, List, Any
+from typing import Dict, Tuple, List
 import logging
 
 logger = logging.getLogger(__name__)

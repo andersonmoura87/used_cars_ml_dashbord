@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from ..database import get_db
-from ..models import CarORM, CarCreate, CarResponse
+from ..models import CarORM, CarResponse
 from sqlalchemy import func
 import logging
 

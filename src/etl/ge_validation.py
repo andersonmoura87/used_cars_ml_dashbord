@@ -17,7 +17,7 @@ import logging
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 import pandas as pd
 
@@ -28,7 +28,7 @@ _VALIDATIONS_DIR = _ROOT / "gx" / "uncommitted" / "validations"
 
 try:
     import great_expectations as gx
-    from great_expectations.core import ExpectationSuite, ExpectationConfiguration
+    from great_expectations.core import ExpectationConfiguration
 
     _GE_AVAILABLE = True
 except ImportError:  # pragma: no cover

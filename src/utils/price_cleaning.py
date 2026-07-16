@@ -1,5 +1,4 @@
 import pandas as pd
-import numpy as np
 import re
 from typing import Tuple, Dict
 from sklearn.ensemble import IsolationForest

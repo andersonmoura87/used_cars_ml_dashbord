@@ -4,8 +4,6 @@ from sklearn.preprocessing import RobustScaler
 from sklearn.impute import KNNImputer
 from sklearn.ensemble import IsolationForest
 from sklearn.neighbors import LocalOutlierFactor
-from sklearn.preprocessing import StandardScaler
-from sklearn.covariance import EmpiricalCovariance
 import logging
 from typing import Dict, Tuple, List, Any
 from scipy import stats
@@ -153,7 +151,7 @@ class RobustDataQuality:
             group_key = tuple(df.loc[idx, corr_cols])
             try:
                 mode_value = grouped.get_group(group_key).mode()[0]
-            except:
+            except (KeyError, IndexError):
                 mode_value = df[target_col].mode()[0]
             result[idx] = mode_value
             
