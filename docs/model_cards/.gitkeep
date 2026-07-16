@@ -1,0 +1,2 @@
+# Model Cards gerados automaticamente (UCM-25)
+# Execute: python scripts/generate_model_card.py --meta models/<file>_meta.json

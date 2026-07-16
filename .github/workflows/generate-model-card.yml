@@ -1,0 +1,104 @@
+name: Generate Model Card
+
+# UCM-25: gera Model Card sob demanda a partir do MLflow ou meta local.
+on:
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: "Stage MLflow a documentar"
+        required: true
+        default: Production
+        type: choice
+        options:
+          - Production
+          - Staging
+          - None
+      model_version:
+        description: "Versão específica (vazio = latest do stage)"
+        required: false
+        type: string
+
+  # Também chamável por outros workflows
+  workflow_call:
+    inputs:
+      stage:
+        required: false
+        type: string
+        default: Production
+      model_version:
+        required: false
+        type: string
+        default: ""
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+permissions:
+  contents: read
+
+jobs:
+  generate:
+    name: Generate Model Card
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install mlflow==2.19.0
+
+      - name: Validate version input
+        env:
+          MODEL_VERSION: ${{ inputs.model_version }}
+        run: |
+          if [ -n "$MODEL_VERSION" ] && ! echo "$MODEL_VERSION" | grep -qE '^[0-9]+$'; then
+            echo "::error::model_version deve conter apenas dígitos. Recebido: '$MODEL_VERSION'"
+            exit 1
+          fi
+
+      - name: Generate Model Card
+        id: card
+        env:
+          MLFLOW_TRACKING_URI:     ${{ secrets.MLFLOW_TRACKING_URI }}
+          MLFLOW_REGISTERED_MODEL: ${{ secrets.MLFLOW_REGISTERED_MODEL || 'used_cars_price_model' }}
+          GIT_SHA:                 ${{ github.sha }}
+          GITHUB_ACTOR:            ${{ github.actor }}
+          STAGE:                   ${{ inputs.stage || 'Production' }}
+          MODEL_VERSION:           ${{ inputs.model_version }}
+        run: |
+          ARGS=(
+            --stage "$STAGE"
+            --git-sha "$GIT_SHA"
+            --promoted-by "$GITHUB_ACTOR"
+            --promotion-reason "Geração manual via workflow Generate Model Card"
+            --versioned
+          )
+          if [ -n "$MODEL_VERSION" ]; then
+            ARGS+=(--version "$MODEL_VERSION")
+          fi
+
+          # Fallback para meta local se MLflow não estiver configurado
+          if [ -z "$MLFLOW_TRACKING_URI" ]; then
+            META=$(ls -t models/*_meta.json 2>/dev/null | head -1 || true)
+            if [ -z "$META" ]; then
+              echo "::error::Sem MLFLOW_TRACKING_URI e sem *_meta.json em models/"
+              exit 1
+            fi
+            ARGS+=(--meta "$META")
+          fi
+
+          python scripts/generate_model_card.py "${ARGS[@]}"
+
+      - name: Upload Model Card
+        uses: actions/upload-artifact@v4
+        with:
+          name: model-card-${{ github.run_number }}
+          path: docs/model_cards/
+          if-no-files-found: error

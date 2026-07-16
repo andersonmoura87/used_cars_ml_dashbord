@@ -166,6 +166,41 @@ jobs:
             echo "> Para promover o challenger para Production, use o workflow **Promote Model to Production**."
           } >> "$GITHUB_STEP_SUMMARY"
 
+      # ── UCM-25: Model Card do challenger (se venceu) ─────────────────────────
+      - name: Generate Model Card for challenger
+        id: model_card
+        if: steps.pipeline.outputs.challenger_wins == 'true'
+        env:
+          MLFLOW_TRACKING_URI:     ${{ secrets.MLFLOW_TRACKING_URI }}
+          MLFLOW_REGISTERED_MODEL: ${{ secrets.MLFLOW_REGISTERED_MODEL || 'used_cars_price_model' }}
+          GIT_SHA:                 ${{ github.sha }}
+          CHALLENGER_VERSION:      ${{ steps.pipeline.outputs.challenger_version }}
+        run: |
+          # Preferir meta local se existir; senão consultar MLflow Staging
+          META=$(ls -t models/*_meta.json 2>/dev/null | head -1 || true)
+          ARGS=(
+            --stage Staging
+            --git-sha "$GIT_SHA"
+            --promoted-by "retrain-bot"
+            --promotion-reason "Auto-promovido para Staging após challenger vencer (retrain semanal)"
+            --versioned
+          )
+          if [ -n "$META" ]; then
+            ARGS+=(--meta "$META")
+          elif [ -n "$CHALLENGER_VERSION" ] && [ "$CHALLENGER_VERSION" != "N/A" ]; then
+            ARGS+=(--version "$CHALLENGER_VERSION")
+          fi
+          python scripts/generate_model_card.py "${ARGS[@]}" || \
+            echo "::warning::Model Card não gerado — MLflow/meta indisponível"
+
+      - name: Upload Model Card
+        if: always() && steps.model_card.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: model-card-retrain-${{ github.run_number }}
+          path: docs/model_cards/
+          if-no-files-found: ignore
+
   # ── Notificação Slack (opcional) ──────────────────────────────────────────
   notify:
     name: Notify Result

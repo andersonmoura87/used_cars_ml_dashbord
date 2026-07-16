@@ -107,6 +107,38 @@ jobs:
             echo "**Aprovado por:** @$PROMOTION_ACTOR | **Ref:** \`$PROMOTION_REF\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
+      # ── UCM-25: Model Card automático ──────────────────────────────────────
+      - name: Generate Model Card
+        id: model_card
+        env:
+          MLFLOW_TRACKING_URI:     ${{ secrets.MLFLOW_TRACKING_URI }}
+          MLFLOW_REGISTERED_MODEL: ${{ secrets.MLFLOW_REGISTERED_MODEL }}
+          GIT_SHA:                 ${{ github.sha }}
+          GITHUB_ACTOR:            ${{ github.actor }}
+          MODEL_VERSION:           ${{ inputs.model_version }}
+          TARGET_STAGE:            ${{ inputs.target_stage }}
+          PROMOTION_REASON:        ${{ inputs.reason }}
+        run: |
+          ARGS=(
+            --stage "$TARGET_STAGE"
+            --promoted-by "$GITHUB_ACTOR"
+            --promotion-reason "$PROMOTION_REASON"
+            --git-sha "$GIT_SHA"
+            --versioned
+          )
+          if [ -n "$MODEL_VERSION" ]; then
+            ARGS+=(--version "$MODEL_VERSION")
+          fi
+          python scripts/generate_model_card.py "${ARGS[@]}"
+
+      - name: Upload Model Card artifact
+        if: always() && steps.model_card.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: model-card-${{ inputs.target_stage }}-${{ github.run_number }}
+          path: docs/model_cards/
+          if-no-files-found: ignore
+
       - name: Notify Slack
         # env.SLACK_WEBHOOK é válido em if: — secrets não é (causa YAML validation error)
         if: ${{ env.SLACK_WEBHOOK != '' }}
@@ -116,4 +148,5 @@ jobs:
           SLACK_MESSAGE: >
             :robot_face: Modelo promovido para *${{ inputs.target_stage }}*
             por @${{ github.actor }}.
+            Model Card gerado automaticamente (UCM-25).
           SLACK_COLOR: ${{ inputs.target_stage == 'Production' && 'good' || '#439FE0' }}
