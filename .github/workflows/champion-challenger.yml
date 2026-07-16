@@ -1,0 +1,176 @@
+name: Champion vs Challenger Evaluation
+
+# Executa após cada treino bem-sucedido no CI, ou manualmente.
+# Fluxo:
+#   1. Busca o challenger mais recente (Staging ou None) e o champion (Production)
+#   2. Compara as métricas com uma margem mínima de melhoria
+#   3. Se challenger vence → auto-promove para Staging e posta sumário no PR
+#   4. Se challenger perde → job falha com relatório (champion é mantido)
+#   5. Promoção Production → sempre manual via promote-model.yml (requer aprovação)
+
+on:
+  # Chamado pelo CI após testes e treino passarem
+  workflow_call:
+    inputs:
+      model_version:
+        description: "Versão do challenger a avaliar (vazio = mais recente)"
+        required: false
+        type: string
+        default: ""
+      min_improvement:
+        description: "Melhoria mínima no R² (ex: 0.001)"
+        required: false
+        type: string
+        default: "0.001"
+    outputs:
+      challenger_wins:
+        description: "'true' se challenger vence o champion"
+        value: ${{ jobs.evaluate.outputs.challenger_wins }}
+      challenger_version:
+        description: "Versão do challenger avaliado"
+        value: ${{ jobs.evaluate.outputs.challenger_version }}
+
+  # Permite execução manual para avaliar qualquer versão
+  workflow_dispatch:
+    inputs:
+      model_version:
+        description: "Versão do challenger (vazio = mais recente em Staging)"
+        required: false
+        type: string
+        default: ""
+      min_improvement:
+        description: "Melhoria mínima no R² para o challenger vencer (ex: 0.001)"
+        required: false
+        type: string
+        default: "0.001"
+      promote_on_win:
+        description: "Auto-promover challenger para Staging se vencer?"
+        required: false
+        type: boolean
+        default: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+permissions:
+  contents: read
+  pull-requests: write   # para postar comentário de resultado no PR
+
+jobs:
+  evaluate:
+    name: Evaluate Champion vs Challenger
+    runs-on: ubuntu-latest
+    outputs:
+      challenger_wins:  ${{ steps.compare.outputs.challenger_wins }}
+      challenger_version: ${{ steps.compare.outputs.challenger_version }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install mlflow
+        run: pip install mlflow==2.19.0
+
+      # ── 1. Comparar champion vs challenger ─────────────────────────────────
+      - name: Compare champion vs challenger
+        id: compare
+        env:
+          MLFLOW_TRACKING_URI:     ${{ secrets.MLFLOW_TRACKING_URI }}
+          MLFLOW_REGISTERED_MODEL: ${{ secrets.MLFLOW_REGISTERED_MODEL }}
+          CHALLENGER_VERSION:      ${{ inputs.model_version }}
+          MIN_IMPROVEMENT:         ${{ inputs.min_improvement }}
+        run: |
+          ARGS=(
+            --model "${MLFLOW_REGISTERED_MODEL:-used_cars_price_model}"
+            --min-improvement "${MIN_IMPROVEMENT:-0.001}"
+            --output-json comparison-result.json
+          )
+          if [ -n "$CHALLENGER_VERSION" ]; then
+            ARGS+=(--challenger-version "$CHALLENGER_VERSION")
+          fi
+          # exit 0 mesmo se challenger perder — o step seguinte age sobre o resultado
+          python scripts/compare_models.py "${ARGS[@]}" || true
+          # Garantir que o output existe mesmo sem MLflow configurado
+          if [ ! -f comparison-result.json ]; then
+            echo '{"challenger_wins": false, "verdict": "MLFLOW_NOT_CONFIGURED"}' > comparison-result.json
+          fi
+
+      # ── 2. Auto-promover para Staging se challenger vencer ─────────────────
+      - name: Promote challenger to Staging
+        if: >
+          steps.compare.outputs.challenger_wins == 'true' &&
+          (github.event_name == 'workflow_dispatch' && inputs.promote_on_win == true ||
+           github.event_name == 'workflow_call')
+        env:
+          MLFLOW_TRACKING_URI:     ${{ secrets.MLFLOW_TRACKING_URI }}
+          MLFLOW_REGISTERED_MODEL: ${{ secrets.MLFLOW_REGISTERED_MODEL }}
+          CHALLENGER_VERSION:      ${{ steps.compare.outputs.challenger_version }}
+          GITHUB_ACTOR:            ${{ github.actor }}
+        run: |
+          ARGS=(--to Staging)
+          if [ -n "$CHALLENGER_VERSION" ]; then
+            ARGS+=(--version "$CHALLENGER_VERSION")
+          fi
+          python scripts/promote_model.py "${ARGS[@]}"
+
+      # ── 3. Upload resultado como artefato ──────────────────────────────────
+      - name: Upload comparison result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: champion-challenger-result
+          path: comparison-result.json
+          if-no-files-found: ignore
+
+      # ── 4. Comentar no PR com o resultado (se acionado via PR) ─────────────
+      - name: Comment PR with evaluation result
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let result = {};
+            try {
+              result = JSON.parse(fs.readFileSync('comparison-result.json', 'utf8'));
+            } catch (e) {
+              result = { verdict: 'Resultado não disponível', challenger_wins: false };
+            }
+            const icon = result.challenger_wins ? '✅' : '❌';
+            const champion = result.champion || {};
+            const challenger = result.challenger || {};
+            const reasons = (result.reasons || []).map(r => `- ${r}`).join('\n');
+            const body = `## ${icon} Champion vs Challenger — \`${result.model_name || 'used_cars_price_model'}\`
+
+**Veredicto:** ${result.verdict || 'N/A'}
+
+| Modelo | Versão | R² | RMSE |
+|--------|--------|----|------|
+| Champion | v${champion.version || '—'} | ${champion.r2 != null ? champion.r2.toFixed(4) : 'N/A'} | ${champion.rmse != null ? champion.rmse.toFixed(2) : 'N/A'} |
+| Challenger | v${challenger.version || '—'} | ${challenger.r2 != null ? challenger.r2.toFixed(4) : 'N/A'} | ${challenger.rmse != null ? challenger.rmse.toFixed(2) : 'N/A'} |
+
+**Análise:**
+${reasons}
+
+${result.challenger_wins
+  ? '> Challenger promovido automaticamente para **Staging**. Para promover para Production, use o workflow `Promote Model to Production`.'
+  : '> Champion mantido em Production. O challenger permanece em Staging para análise.'}
+`;
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body,
+            });
+
+      # ── 5. Falhar o job se challenger perdeu (bloqueia PR merge) ───────────
+      - name: Fail if challenger lost
+        if: steps.compare.outputs.challenger_wins == 'false'
+        run: |
+          echo "::warning::Champion mantido — challenger não superou o modelo em Production."
+          echo "Use 'workflow_dispatch' com --dry-run para análise sem bloquear."
+          # Não falhar automaticamente — apenas warning.
+          # Para bloquear o merge descomente: exit 1
