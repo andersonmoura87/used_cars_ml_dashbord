@@ -72,15 +72,25 @@ jobs:
       # ── Subir ambiente staging ───────────────────────────────────────────────
       - name: Start staging environment
         env:
-          DOCKER_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:staging
+          DOCKER_IMAGE:  ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:staging
           # H-04 FIX: sem fallback previsível — exige secret configurado
-          API_KEY:      ${{ secrets.STAGING_API_KEY }}
-          CORS_ORIGINS: "http://localhost:8601"
-          ENVIRONMENT:  staging
+          API_KEY:       ${{ secrets.STAGING_API_KEY }}
+          DB_PASSWORD:   ${{ secrets.DB_PASSWORD_STAGING }}
+          REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD_STAGING }}
+          CORS_ORIGINS:  "http://localhost:8601"
+          # UCM-22: injetar GIT_SHA para telemetria / build info
+          GIT_SHA:       ${{ github.sha }}
         run: |
           if [ -z "$API_KEY" ]; then
             echo "::error::Secret STAGING_API_KEY não configurado. Configure em Settings → Secrets."
             exit 1
+          fi
+          if [ -z "$DB_PASSWORD" ]; then
+            echo "::warning::DB_PASSWORD_STAGING não configurado — usando senha vazia (apenas para CI)"
+            export DB_PASSWORD="ci-staging-$(openssl rand -hex 8)"
+          fi
+          if [ -z "$REDIS_PASSWORD" ]; then
+            export REDIS_PASSWORD="ci-redis-$(openssl rand -hex 8)"
           fi
           docker compose -f docker-compose.staging.yml up -d
 
@@ -112,10 +122,11 @@ jobs:
       - name: Run smoke tests
         id: smoke
         env:
-          API_BASE_URL:   http://localhost:8100
+          API_BASE_URL:        http://localhost:8100
           # H-13 FIX: sem fallback — exige secret configurado
-          API_KEY:        ${{ secrets.STAGING_API_KEY }}
-          SMOKE_TIMEOUT:  "15"
+          API_KEY:             ${{ secrets.STAGING_API_KEY }}
+          SMOKE_TIMEOUT:       "15"
+          SMOKE_WAIT_SECONDS:  "90"
         run: |
           pytest tests/smoke/ -v \
             --tb=short \

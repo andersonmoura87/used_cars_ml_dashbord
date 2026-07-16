@@ -62,9 +62,10 @@ gx/uncommitted/
 .env.staging
 .env.production
 .env.local
-# Padrão seguro: ignorar todos .env exceto o exemplo
+# Padrão seguro: ignorar todos .env exceto os exemplos
 .env.*
 !.env.example
+!.env.staging.example
 
 # Credenciais e chaves (M-22)
 *.pem

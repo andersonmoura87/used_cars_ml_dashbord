@@ -1,39 +1,67 @@
 # Ambiente de staging isolado — portas distintas para coexistir com dev.
+#
 # Variáveis obrigatórias (via .env.staging ou exportadas no CI):
-#   DOCKER_IMAGE   — imagem já construída (ex: ghcr.io/org/used-cars-ml:sha)
+#   DOCKER_IMAGE   — imagem construída (ex: ghcr.io/org/used-cars-ml:sha-abc1234)
 #   API_KEY        — chave de API para smoke tests (STAGING_API_KEY no GitHub)
 #   DB_PASSWORD    — senha do PostgreSQL staging
 #   REDIS_PASSWORD — senha do Redis staging
-#   CORS_ORIGINS   — origens permitidas no staging
+#
+# Opcionais:
+#   CORS_ORIGINS              — default: http://localhost:8601
+#   MLFLOW_TRACKING_URI       — tracking server externo (vazio = sem MLflow)
+#   OTEL_EXPORTER_OTLP_ENDPOINT — coletor OTEL (vazio = traces desabilitados)
+#   GIT_SHA                   — hash do commit para telemetria (injetado pelo CI)
+#
+# Uso local:
+#   export DOCKER_IMAGE=used-cars-ml:latest
+#   export API_KEY=minha-chave-staging
+#   export DB_PASSWORD=senha-forte DB_PASSWORD_STAGING=senha-forte
+#   export REDIS_PASSWORD=outra-senha
+#   docker compose -f docker-compose.staging.yml up -d
+#   pytest tests/smoke/ -v
 
 services:
   app:
     image: ${DOCKER_IMAGE:-used-cars-ml:staging}
     ports:
-      # H-16 FIX: bind em loopback — não exposto na rede do runner
+      # H-16: bind em loopback — não exposto na rede pública
       - "127.0.0.1:8100:8000"
       - "127.0.0.1:8601:8501"
     environment:
+      # ── Banco de dados ──────────────────────────────────────────────────────
       - DB_HOST=db-staging
       - DB_PORT=5432
       - DB_NAME=used_cars_staging
       - DB_USER=postgres
-      # H-02 FIX: senha via variável de ambiente — sem hardcode
       - DB_PASSWORD=${DB_PASSWORD}
+      # ── Redis ───────────────────────────────────────────────────────────────
       - REDIS_HOST=redis-staging
       - REDIS_PORT=6379
       - REDIS_DB=1
       - REDIS_PASSWORD=${REDIS_PASSWORD}
+      # ── API ─────────────────────────────────────────────────────────────────
       - API_HOST=0.0.0.0
       - API_PORT=8000
       - API_WORKERS=2
       - API_RELOAD=false
+      - MAX_REQUEST_BODY_BYTES=5242880    # 5 MB em staging (mais restrito que dev)
+      - API_RATE_LIMIT=100/minute         # mais restrito que dev (200/min)
       - LOG_LEVEL=INFO
       - ENVIRONMENT=staging
-      # H-03 FIX: sem fallback previsível — exige injeção explícita
       - API_KEY=${API_KEY}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:8601}
+      # ── MLflow ──────────────────────────────────────────────────────────────
       - MLFLOW_TRACKING_URI=${MLFLOW_TRACKING_URI:-}
+      - MLFLOW_EXPERIMENT_NAME=${MLFLOW_EXPERIMENT_NAME:-used_cars_price_model}
+      - MLFLOW_REGISTERED_MODEL=${MLFLOW_REGISTERED_MODEL:-used_cars_price_model}
+      # ── UCM-22: Observabilidade ─────────────────────────────────────────────
+      # GIT_SHA injetado pelo CI (actions/checkout@v4 expõe GITHUB_SHA)
+      - GIT_SHA=${GIT_SHA:-unknown}
+      # OTEL_EXPORTER_OTLP_ENDPOINT: deixe vazio para desabilitar traces
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+    networks:
+      - staging-public
+      - staging-backend
     depends_on:
       db-staging:
         condition: service_healthy
@@ -50,15 +78,16 @@ services:
   db-staging:
     image: postgres:15
     ports:
-      # H-16 FIX: bind em loopback
+      # H-16: porta 5433 para não colidir com dev (5432)
       - "127.0.0.1:5433:5432"
     environment:
       - POSTGRES_DB=used_cars_staging
       - POSTGRES_USER=postgres
-      # H-02 FIX: senha via variável de ambiente
       - POSTGRES_PASSWORD=${DB_PASSWORD}
     volumes:
       - postgres_staging_data:/var/lib/postgresql/data
+    networks:
+      - staging-backend
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
@@ -68,11 +97,12 @@ services:
 
   redis-staging:
     image: redis:7
-    # H-05 FIX: Redis com autenticação
     command: redis-server --requirepass ${REDIS_PASSWORD} --loglevel warning
     ports:
-      # H-16 FIX: bind em loopback
+      # H-16: porta 6380 para não colidir com dev (6379)
       - "127.0.0.1:6380:6379"
+    networks:
+      - staging-backend
     healthcheck:
       test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
       interval: 5s
@@ -82,3 +112,13 @@ services:
 
 volumes:
   postgres_staging_data:
+
+# Isolamento de rede no staging (igual ao padrão de produção)
+#   staging-public  → app acessível pelo host via port bindings
+#   staging-backend → db e redis apenas container-to-container
+networks:
+  staging-public:
+    driver: bridge
+  staging-backend:
+    driver: bridge
+    internal: true
