@@ -166,8 +166,8 @@ def promote(
     summary = os.getenv("GITHUB_STEP_SUMMARY")
     if summary:
         with open(summary, "a") as f:
-            f.write(f"## Promoção de Modelo\n\n")
-            f.write(f"| Campo | Valor |\n|---|---|\n")
+            f.write("## Promoção de Modelo\n\n")
+            f.write("| Campo | Valor |\n|---|---|\n")
             f.write(f"| Modelo | `{model_name}` |\n")
             f.write(f"| Versão | `{target_version}` |\n")
             f.write(f"| Stage | `{to_stage}` |\n")

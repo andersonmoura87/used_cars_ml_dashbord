@@ -41,7 +41,7 @@ import json
 import os
 import sys
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 try:
@@ -267,7 +267,7 @@ def compare(
         },
         "reasons": reasons,
         "min_improvement": min_improvement,
-        "evaluated_at": datetime.utcnow().isoformat() + "Z",
+        "evaluated_at": datetime.now(timezone.utc).isoformat(),
     }
 
     if output_json:
@@ -287,8 +287,8 @@ def compare(
             icon = ":white_check_mark:" if challenger_wins else ":x:"
             f.write(f"## {icon} Champion vs Challenger — {model_name}\n\n")
             f.write(f"**Veredicto:** {verdict}\n\n")
-            f.write(f"| Modelo | Versão | Stage | R² | RMSE |\n")
-            f.write(f"|--------|--------|-------|----|------|\n")
+            f.write("| Modelo | Versão | Stage | R² | RMSE |\n")
+            f.write("|--------|--------|-------|----|------|\n")
             champ_ver = champion.version if champion else "—"
             champ_stage = champion.stage if champion else "—"
             f.write(f"| Champion   | v{champ_ver} | {champ_stage} | {champ_r2} | {champ_rmse} |\n")
