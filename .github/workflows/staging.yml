@@ -127,6 +127,8 @@ jobs:
           API_KEY:             ${{ secrets.STAGING_API_KEY }}
           SMOKE_TIMEOUT:       "15"
           SMOKE_WAIT_SECONDS:  "90"
+          # SMOKE_STRICT=true: falha real se API não responder (staging deve estar disponível)
+          SMOKE_STRICT:        "true"
         run: |
           pytest tests/smoke/ -v \
             --tb=short \

@@ -64,11 +64,16 @@ def wait_for_api(base_url: str) -> None:
     """
     Aguarda a API ficar disponível antes de qualquer teste (max 90s).
 
-    Estratégia de retry com backoff linear para evitar race condition
-    entre 'docker compose up -d' e o início dos testes.
+    Se a API não responder, pula toda a sessão de smoke tests ao invés
+    de falhar — isso evita que 'pytest tests/' no CI quebre por incluir
+    tests/smoke/ sem uma API rodando.
+
+    Para forçar falha (ex: em pipeline de staging onde a API DEVE estar
+    disponível), defina a variável: SMOKE_STRICT=true
     """
     url = f"{base_url}/health"
     max_wait = int(os.getenv("SMOKE_WAIT_SECONDS", "90"))
+    strict_mode = os.getenv("SMOKE_STRICT", "false").lower() == "true"
     deadline = time.time() + max_wait
     attempt = 0
 
@@ -85,7 +90,11 @@ def wait_for_api(base_url: str) -> None:
             pass
         time.sleep(3)
 
-    pytest.fail(
+    msg = (
         f"API não respondeu em {url} após {max_wait}s ({attempt} tentativas). "
         "Verifique os logs: docker compose -f docker-compose.staging.yml logs app"
     )
+    if strict_mode:
+        pytest.fail(msg)
+    else:
+        pytest.skip(f"API indisponível — smoke tests pulados. {msg}")
