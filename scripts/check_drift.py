@@ -267,28 +267,33 @@ def _write_github_outputs(report: dict) -> None:
 
     summary = os.getenv("GITHUB_STEP_SUMMARY")
     if summary:
-        icon = ":warning:" if report["drift_detected"] else ":white_check_mark:"
+        icon = ":warning:" if report.get("drift_detected") else ":white_check_mark:"
         with open(summary, "a") as f:
             f.write(f"## {icon} Data Drift Report\n\n")
-            f.write(f"**Status:** {report['status']}  \n")
-            f.write(f"**Drift Score:** {report['drift_score']:.4f}  \n\n")
-            if report["drifted_features"]:
-                f.write(f"**Features com drift:** {', '.join(report['drifted_features'])}\n\n")
-            f.write("### Numéricas (KS test)\n\n")
-            f.write("| Feature | p-value | Estatística | Drift |\n")
-            f.write("|---------|---------|-------------|-------|\n")
-            for feat, r in report["numerical"].items():
-                pv = f"{r['p_value']:.4f}" if r.get("p_value") is not None else "N/A"
-                st = f"{r['statistic']:.4f}" if r.get("statistic") is not None else "N/A"
-                dr = ":x:" if r.get("drift") else ":white_check_mark:"
-                f.write(f"| {feat} | {pv} | {st} | {dr} |\n")
-            f.write("\n### Categóricas (PSI)\n\n")
-            f.write("| Feature | PSI | Drift |\n")
-            f.write("|---------|-----|-------|\n")
-            for feat, r in report["categorical"].items():
-                psi = f"{r['psi']:.4f}" if r.get("psi") is not None else "N/A"
-                dr  = ":x:" if r.get("drift") else ":white_check_mark:"
-                f.write(f"| {feat} | {psi} | {dr} |\n")
+            f.write(f"**Status:** {report.get('status', 'N/A')}  \n")
+            f.write(f"**Drift Score:** {report.get('drift_score', 0.0):.4f}  \n\n")
+            drifted = report.get("drifted_features") or []
+            if drifted:
+                f.write(f"**Features com drift:** {', '.join(drifted)}\n\n")
+            numerical = report.get("numerical") or {}
+            if numerical:
+                f.write("### Numéricas (KS test)\n\n")
+                f.write("| Feature | p-value | Estatística | Drift |\n")
+                f.write("|---------|---------|-------------|-------|\n")
+                for feat, r in numerical.items():
+                    pv = f"{r['p_value']:.4f}" if r.get("p_value") is not None else "N/A"
+                    st = f"{r['statistic']:.4f}" if r.get("statistic") is not None else "N/A"
+                    dr = ":x:" if r.get("drift") else ":white_check_mark:"
+                    f.write(f"| {feat} | {pv} | {st} | {dr} |\n")
+            categorical = report.get("categorical") or {}
+            if categorical:
+                f.write("\n### Categóricas (PSI)\n\n")
+                f.write("| Feature | PSI | Drift |\n")
+                f.write("|---------|-----|-------|\n")
+                for feat, r in categorical.items():
+                    psi = f"{r['psi']:.4f}" if r.get("psi") is not None else "N/A"
+                    dr  = ":x:" if r.get("drift") else ":white_check_mark:"
+                    f.write(f"| {feat} | {psi} | {dr} |\n")
 
 
 def parse_args() -> argparse.Namespace:
