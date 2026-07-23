@@ -1,3 +1,15 @@
+"""DEPRECATED (UCM-27) — use src.etl.transform via python -m src.etl.run_pipeline."""
+from __future__ import annotations
+
+import warnings
+
+warnings.warn(
+    "scripts.cleaning.data_cleaner está DEPRECATED (UCM-27). "
+    "Use src.etl.transform — ver docs/ETL.md",
+    DeprecationWarning,
+    stacklevel=2,
+)
+
 import pandas as pd
 import numpy as np
 from typing import Dict, List, Optional

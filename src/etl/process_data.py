@@ -2,6 +2,14 @@ import pandas as pd
 from dotenv import load_dotenv
 import os
 import logging
+import warnings
+
+warnings.warn(
+    "src.etl.process_data está DEPRECATED (UCM-27). "
+    "Use: python -m src.etl.run_pipeline — ver docs/ETL.md",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 # Configurar logging
 logging.basicConfig(

@@ -1,3 +1,15 @@
+"""DEPRECATED (UCM-27) — use src.etl.load via python -m src.etl.run_pipeline."""
+from __future__ import annotations
+
+import warnings
+
+warnings.warn(
+    "scripts.load_to_postgres está DEPRECATED (UCM-27). "
+    "Use src.etl.load.load_data — ver docs/ETL.md",
+    DeprecationWarning,
+    stacklevel=2,
+)
+
 import pandas as pd
 import numpy as np
 from sqlalchemy import create_engine, text, Table, Column, MetaData

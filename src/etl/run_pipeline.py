@@ -131,6 +131,12 @@ def run_pipeline():
             pass
         return False
 
-if __name__ == "__main__":
+
+def main() -> None:
+    """Entry point CLI (pyproject `run-etl` e `python -m src.etl.run_pipeline`)."""
     import sys
     sys.exit(0 if run_pipeline() else 1)
+
+
+if __name__ == "__main__":
+    main()

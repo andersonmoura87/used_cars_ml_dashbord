@@ -2,6 +2,14 @@ import os
 import pandas as pd
 from dotenv import load_dotenv
 import logging
+import warnings
+
+warnings.warn(
+    "src.etl.validate_data está DEPRECATED (UCM-27). "
+    "Use src.etl.ge_validation (validate_raw/validate_clean) — ver docs/ETL.md",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 # Configurar logging
 logging.basicConfig(

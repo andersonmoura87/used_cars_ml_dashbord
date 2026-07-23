@@ -29,12 +29,9 @@ data/
 ```bash
 # Única fonte de verdade em produção / CI
 python -m src.etl.run_pipeline
-
-# Wrapper CLI (emite DeprecationWarning e delega ao canônico)
-python scripts/run_etl.py
 ```
 
-Ver `docs/ETL.md` para pipelines deprecados (Prefect, load_data legado, etc.).
+Ver `docs/ETL.md` para pipelines deprecados (stub Prefect, load_data legado, etc.).
 
 ## Notas
 

@@ -16,7 +16,7 @@ classifiers = [
 ]
 
 [project.scripts]
-run-etl        = "scripts.run_etl:main"
+run-etl        = "src.etl.run_pipeline:main"
 run-dashboard  = "scripts.run_dashboard:main"
 train-model    = "scripts.train_model:main"
 

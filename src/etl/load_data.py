@@ -4,6 +4,14 @@ from dotenv import load_dotenv
 import os
 import logging
 import sys
+import warnings
+
+warnings.warn(
+    "src.etl.load_data está DEPRECATED (UCM-27). "
+    "Use src.etl.load.load_data via python -m src.etl.run_pipeline — ver docs/ETL.md",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 # Configurar logging
 logging.basicConfig(

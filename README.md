@@ -1,43 +1,55 @@
-# Dashboard de Análise de Mercado de Carros Usados
+# Used Cars ML Dashboard
 
-Este dashboard interativo permite analisar dados do mercado de carros usados, incluindo análises estatísticas avançadas, previsões de preços, análise de tendências e recomendações de compra para revenda.
+Pipeline de **DataOps/MLOps** + API FastAPI + dashboard Streamlit para análise
+e precificação de veículos usados.
+
+## Stack
+
+- **Python ≥ 3.11**
+- FastAPI (API), Streamlit (`dashboard/`), XGBoost, MLflow, Great Expectations
+- PostgreSQL + Redis · Docker Compose (perfis `monitoring`, `lineage`)
+- CI/CD: GitHub Actions (CI, staging smoke, retrain, promote, data-pipeline)
+
+## Início rápido
+
+```bash
+cp .env.example .env          # preencha secrets — ver docs/SECRETS.md
+pip install -r requirements.txt
+pip install -r requirements-dev.txt
+
+# Infra local
+docker compose up -d db redis mlflow
+
+# ETL canônico
+python -m src.etl.run_pipeline
+
+# API
+uvicorn src.api.main:app --reload --port 8000
+
+# Dashboard
+streamlit run dashboard/Home.py
+```
+
+Validar secrets: `python scripts/check_secrets.py --environment development --scope etl`
+
+## Documentação
+
+| Doc | Conteúdo |
+|-----|----------|
+| [docs/ETL.md](docs/ETL.md) | Pipeline ETL canônico (UCM-27) |
+| [docs/SECRETS.md](docs/SECRETS.md) | Secrets GitHub / .env |
+| [docs/SPRINT4.md](docs/SPRINT4.md) | Backlog Sprint 4 (UCM-27+) |
+| [data/README.md](data/README.md) | Camada medallion |
+| [tests/README.md](tests/README.md) | Como rodar testes |
+| [SECURITY.md](SECURITY.md) | Política de segurança |
 
 ## Funcionalidades
 
-1. **Análise de Mercado**
-   - Visualização de métricas principais (total de veículos, preço médio, etc.)
-   - Distribuição de preços com análise estatística completa
-   - Preço médio por fabricante
-   - Modelo preditivo de preços usando XGBoost
-   - Análise de outliers e impacto no mercado
-
-2. **Análises Estatísticas**
-   - **Distribuição de Preços**
-     - Medidas de tendência central (média, mediana, moda)
-     - Medidas de dispersão (desvio padrão, variância, IQR)
-     - Análise de assimetria e curtose
-   
-   - **Análises Bivariadas**
-     - Correlações entre variáveis chave
-     - Padrões temporais
-     - Relações preço-quilometragem
-   
-   - **Identificação de Outliers**
-     - Método IQR para detecção
-     - Análise de impacto nos resultados
-     - Tratamento e filtragem
-
-3. **Previsão de Vendas**
-   - Forecast de vendas por fabricante
-   - Análise de tendências
-   - Intervalos de confiança
-   - Métricas de crescimento
-
-4. **Recomendações de Compra**
-   - Identificação de oportunidades de revenda
-   - Análise de margens de lucro
-   - Filtros personalizáveis
-   - Top 10 oportunidades
+1. **Análise de Mercado** — métricas, distribuição de preços, outliers
+2. **Modelo de preços** — XGBoost + MLflow registry + champion/challenger
+3. **API** — `/api/v1/cars`, financing, analytics (auth `X-API-Key`)
+4. **Observabilidade** — Prometheus/Grafana, OpenLineage, alertas Slack
+5. **Qualidade** — Great Expectations + quality trend
 
 ## Medidas DAX Disponíveis
 
@@ -66,50 +78,49 @@ CV_Price_Year = DIVIDE([StdDev_Price_Year], [Avg_Price_Year])
 
 ## Requisitos
 
-- Python 3.8+
-- Dependências listadas em `requirements.txt`
+- Python **3.11+**
+- Dependências em `requirements.txt` (+ `requirements-dev.txt` para testes)
 
 ## Instalação
 
-1. Clone o repositório:
 ```bash
 git clone <repository-url>
-cd <repository-name>
-```
-
-2. Instale as dependências:
-```bash
+cd used_cars_ml_dashbord
+cp .env.example .env
 pip install -r requirements.txt
 ```
 
 ## Uso
 
-1. Execute o dashboard:
 ```bash
-streamlit run scripts/market_dashboard.py
-```
+# Dashboard multipage
+streamlit run dashboard/Home.py
+# → http://localhost:8501
 
-2. Acesse o dashboard no navegador (geralmente em http://localhost:8501)
+# API
+uvicorn src.api.main:app --port 8000
+# → http://localhost:8000/docs
+```
 
 ## Estrutura do Projeto
 
 ```
 .
-├── data/
-│   ├── raw/
-│   │   └── cars.csv
-│   └── processed/
-│       └── cars_abt.csv
-├── scripts/
-│   ├── analysis/
-│   │   ├── descriptive_analysis.py
-│   │   ├── statistical_analysis.py
-│   │   └── advanced_analytics.py
-│   ├── etl/
-│   │   └── transform.py
-│   └── market_dashboard.py
-├── requirements.txt
-└── README.md
+├── src/
+│   ├── api/              # FastAPI + telemetry
+│   ├── etl/              # Pipeline canônico (extract/transform/load/run_pipeline)
+│   ├── models/           # AdvancedPriceModel + MLflow
+│   ├── database/         # SQLAlchemy
+│   └── utils/
+├── dashboard/            # Streamlit multipage (Home + pages/)
+├── scripts/              # CLIs MLOps (retrain, promote, drift, notify…)
+├── tests/                # unit / smoke / MLOps
+├── data/                 # medallion: raw / processed / quality
+├── docker/               # prometheus, grafana, mlflow
+├── docs/                 # ETL, SECRETS, SPRINT4, model_cards
+├── docker-compose.yml
+├── docker-compose.staging.yml
+└── .github/workflows/
 ```
 
 ## Análises Disponíveis

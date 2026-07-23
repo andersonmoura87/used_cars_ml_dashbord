@@ -10,6 +10,7 @@ docker-compose*.yml                 @ander
 
 # Modelos e pipelines
 src/models/                         @ander
+src/etl/                            @ander
 scripts/pipeline/                   @ander
 scripts/train_model.py              @ander
 
