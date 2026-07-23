@@ -17,11 +17,9 @@ def read_csv_data():
         csv_path = os.getenv('RAW_DATA_PATH')
         logger.info(f"Lendo dados do arquivo: {csv_path}")
         
-        df = pd.read_csv(
-            csv_path,
-            parse_dates=['posting_date'],
-            date_parser=lambda x: pd.to_datetime(x, utc=True)
-        )
+        df = pd.read_csv(csv_path)
+        if "posting_date" in df.columns:
+            df["posting_date"] = pd.to_datetime(df["posting_date"], utc=True, errors="coerce")
         
         logger.info(f"Dados lidos com sucesso. Total de registros: {len(df)}")
         return df

@@ -96,7 +96,20 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run ETL Pipeline
+      - name: Validate production secrets
+        env:
+          ENVIRONMENT: production
+          DB_USER:     ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          DB_HOST:     ${{ secrets.DB_HOST }}
+          DB_NAME:     ${{ secrets.DB_NAME }}
+        run: |
+          python scripts/check_secrets.py --environment production --scope etl || {
+            echo "::error::Secrets DB_* ausentes ou inseguros. Ver docs/SECRETS.md"
+            exit 1
+          }
+
+      - name: Run ETL Pipeline (canônico)
         id: etl
         env:
           DB_USER:     ${{ secrets.DB_USER }}
@@ -104,15 +117,17 @@ jobs:
           DB_HOST:     ${{ secrets.DB_HOST }}
           DB_PORT:     ${{ secrets.DB_PORT }}
           DB_NAME:     ${{ secrets.DB_NAME }}
+          ENVIRONMENT: production
         run: |
           set +e
           python -m src.etl.run_pipeline
           ETL_RC=$?
           echo "etl_exit_code=$ETL_RC" >> "$GITHUB_OUTPUT"
+          set -e
           if [ $ETL_RC -ne 0 ]; then
-            echo "::warning::ETL pipeline retornou exit $ETL_RC"
+            echo "::error::ETL pipeline falhou com exit $ETL_RC"
+            exit $ETL_RC
           fi
-          exit 0
 
       # ── UCM-26: tendência de qualidade + alerta Slack ────────────────────────
       - name: Build quality trend dashboard
@@ -136,7 +151,6 @@ jobs:
             STATUS="failure"
             ERROR="ETL pipeline exit code ${ETL_RC}"
           fi
-          # Preferir metadados do último run se existirem
           META=$(ls -t logs/metadata/pipeline_*.json 2>/dev/null | head -1 || true)
           ARGS=(--status "$STATUS" --environment "$ENVIRONMENT" --run-url "$GITHUB_RUN_URL")
           [ -n "$ERROR" ] && ARGS+=(--error "$ERROR")

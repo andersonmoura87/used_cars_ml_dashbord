@@ -1,3 +1,24 @@
+"""
+DEPRECATED — pipeline Prefect alternativo.
+
+O entrypoint canônico de produção é:
+    python -m src.etl.run_pipeline
+
+Este flow permanece para experimentos locais com Prefect
+(requer requirements-etl.txt). Não é chamado pelo CI.
+Ver docs/ETL.md.
+"""
+from __future__ import annotations
+
+import warnings
+
+warnings.warn(
+    "scripts.pipeline.cars_etl está DEPRECATED. "
+    "Use: python -m src.etl.run_pipeline  (ver docs/ETL.md)",
+    DeprecationWarning,
+    stacklevel=2,
+)
+
 from prefect import flow, task
 from prefect.tasks import task_input_hash
 from datetime import timedelta, datetime

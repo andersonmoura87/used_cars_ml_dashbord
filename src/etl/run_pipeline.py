@@ -132,4 +132,5 @@ def run_pipeline():
         return False
 
 if __name__ == "__main__":
-    run_pipeline() 
+    import sys
+    sys.exit(0 if run_pipeline() else 1)
