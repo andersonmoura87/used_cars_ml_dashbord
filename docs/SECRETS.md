@@ -13,10 +13,18 @@ python scripts/check_secrets.py --checklist
 
 | Scope | Quando | Secrets |
 |-------|--------|---------|
-| `etl` | `data-pipeline.yml` deploy | `DB_USER`, `DB_PASSWORD`, `DB_HOST`, `DB_NAME` |
-| `api` | staging / production API | `API_KEY`, `REDIS_PASSWORD` |
+| `etl` | `data-pipeline.yml` + CD migrations | `DB_USER`, `DB_PASSWORD`, `DB_HOST`, `DB_NAME` |
+| `api` | staging / production API + CD | `API_KEY`, `REDIS_PASSWORD` |
 | `cd` | `cd.yml` deploy SSH | `SSH_HOST`, `SSH_USERNAME`, `SSH_PRIVATE_KEY` |
+| staging | `staging.yml` via CD | `STAGING_API_KEY`, `DB_PASSWORD_STAGING`, `REDIS_PASSWORD_STAGING` |
 | optional | recomendados | `SLACK_WEBHOOK`, `MLFLOW_*`, `GRAFANA_PASSWORD`, `OPENLINEAGE_URL` |
+
+## Gates no CI/CD (UCM-33)
+
+| Workflow | Comando |
+|----------|---------|
+| `data-pipeline.yml` (deploy) | `--scope etl` |
+| `cd.yml` (deploy) | `--scope etl,api,cd` |
 
 ## Valores proibidos (staging/production)
 
@@ -31,4 +39,4 @@ python scripts/check_secrets.py --checklist
 openssl rand -hex 32
 ```
 
-Ver também: `docs/ETL.md` (pipeline canônico).
+Ver: `docs/ETL.md` · `docs/runbooks/deploy-rollback.md`

@@ -5,10 +5,20 @@ name: Staging Deploy + Smoke Tests
 # falsos negativos quando STAGING_API_KEY não está configurado no ambiente dev.
 on:
   workflow_call:
+    secrets:
+      STAGING_API_KEY:
+        required: true
+      DB_PASSWORD_STAGING:
+        required: false
+      REDIS_PASSWORD_STAGING:
+        required: false
     outputs:
       image_tag:
         description: "Tag da imagem construída"
         value: ${{ jobs.build-and-test.outputs.image_tag }}
+      image_digest_ref:
+        description: "Referência sha- do commit"
+        value: sha-${{ github.sha }}
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"

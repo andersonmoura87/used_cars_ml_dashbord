@@ -61,6 +61,11 @@ pythonpath = ["."]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+markers = [
+    "integration: testes que requerem serviços reais (DB/API); use INTEGRATION_DB=1",
+    "smoke: smoke tests pós-deploy",
+    "sla: testes de SLA de latência",
+]
 
 [tool.coverage.run]
 source = ["src"]

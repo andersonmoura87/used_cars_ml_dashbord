@@ -15,13 +15,13 @@
 |----|--------|--------|------------|---------|
 | **UCM-27** | Unificar pipeline ETL: stub Prefect + deprecar paths paralelos + CI/docs | 5 | Critical | — |
 | **UCM-28** | Remover módulos ETL legados após período de deprecação (process_data, load_data, validate_data, DataCleaner, PostgresLoader) | 3 | High | UCM-27 |
-| **UCM-29** | Realinhar/remover testes skipped (`test_pipeline.py`, `test_db.py`) ao canônico | 3 | High | UCM-27 *(parcial: test_pipeline realinhado)* |
+| **UCM-29** | Realinhar/remover testes skipped (`test_pipeline.py`, `test_db.py`) ao canônico | 3 | High | UCM-27 ✅ |
 
 ## Epic B — Qualidade & docs
 
 | ID | Título | Pontos | Prioridade |
 |----|--------|--------|------------|
-| **UCM-30** | Atualizar README raiz (Python 3.11, arquitetura MLOps, link ETL/Secrets) | 2 | High | *(parcial com UCM-27 — revisar DAX legado se quiser enxugar)* |
+| **UCM-30** | Atualizar README raiz (Python 3.11, arquitetura MLOps, link ETL/Secrets) | 2 | High | ✅ |
 | **UCM-31** | Subir cobertura ETL e scripts MLOps para ≥70% nos módulos críticos | 5 | Medium |
 | **UCM-32** | Flake8: limpar F401/E501 semânticos em `src/utils` (não cosmético W293) | 3 | Low |
 
@@ -46,17 +46,18 @@
 ## Ordem sugerida nesta sprint
 
 ```
-UCM-27 → UCM-29 → UCM-30 → UCM-33 → UCM-34
-     ↘ UCM-28 (fim da sprint / início Sprint 5)
+UCM-27 ✅ → UCM-29 ✅ → UCM-30 ✅ → UCM-33 ✅ → UCM-34 ✅
+     ↘ UCM-28 (fim da sprint — deletar módulos deprecated)
 UCM-31 / UCM-35 / UCM-36 em paralelo se houver capacidade
 ```
 
 ## Definição de pronto (Sprint 4)
 
-- [ ] Um único entrypoint ETL em CI e docs
-- [ ] Zero testes skipped “pendente alinhamento” sem issue ou remoção
-- [ ] README reflete stack atual
-- [ ] `check_secrets --scope etl|api|cd` no caminho de deploy
-- [ ] CD staging→prod descrito e testável
+- [x] Um único entrypoint ETL em CI e docs (UCM-27)
+- [x] Zero testes skipped “pendente alinhamento” sem issue ou remoção (UCM-29)
+- [x] README reflete stack atual (UCM-30)
+- [x] `check_secrets --scope etl|api|cd` no caminho de deploy (UCM-33)
+- [x] CD staging→prod descrito e testável (UCM-34)
+- [ ] UCM-28 — deletar módulos deprecated (fim da sprint)
 
 Import Jira: `jira_import_sprint4.csv`

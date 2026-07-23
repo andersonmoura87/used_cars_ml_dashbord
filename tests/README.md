@@ -31,12 +31,14 @@ tests/
 # Todos (exceto smoke)
 pytest
 
-# ETL core
-pytest tests/unit/test_extract.py tests/unit/test_transform.py \
-       tests/unit/test_load.py tests/unit/test_run_pipeline.py -q
+# ETL core + DB unitários
+pytest tests/unit/ -q
+
+# Integração DB (requer PostgreSQL + INTEGRATION_DB=1)
+INTEGRATION_DB=1 pytest tests/unit/test_db.py -m integration -q
 
 # Smoke (requer API)
 pytest tests/smoke/
 ```
 
-Pipeline canônico: `docs/ETL.md` · Secrets: `docs/SECRETS.md`
+Pipeline canônico: `docs/ETL.md` · Secrets: `docs/SECRETS.md` · Deploy: `docs/runbooks/deploy-rollback.md`

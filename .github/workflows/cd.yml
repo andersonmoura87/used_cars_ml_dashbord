@@ -7,6 +7,8 @@ on:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/used-cars-ml
 
 # M-10 FIX: least-privilege por job
 permissions:
@@ -17,9 +19,10 @@ jobs:
   staging-gate:
     name: Staging Gate
     uses: ./.github/workflows/staging.yml
-    # H-10 FIX: apenas secrets necessários, não `secrets: inherit`
     secrets:
-      STAGING_API_KEY: ${{ secrets.STAGING_API_KEY }}
+      STAGING_API_KEY:        ${{ secrets.STAGING_API_KEY }}
+      DB_PASSWORD_STAGING:    ${{ secrets.DB_PASSWORD_STAGING }}
+      REDIS_PASSWORD_STAGING: ${{ secrets.REDIS_PASSWORD_STAGING }}
 
   # ── 2. Verificar modelo em Production no MLflow Registry ───────────────────
   check-model:
@@ -64,7 +67,6 @@ jobs:
           try:
               versions = client.get_latest_versions(model_name, stages=["Production"])
               if not versions:
-                  # H-15 FIX: falhar o job, não apenas warning
                   print(f"::error::Nenhum modelo '{model_name}' em Production. "
                         "Execute: python scripts/promote_model.py --from-stage Staging --to Production")
                   sys.exit(1)
@@ -84,6 +86,11 @@ jobs:
 
     permissions:
       contents: read
+      packages: read
+
+    env:
+      DOCKER_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
+      PREV_DOCKER_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:production
 
     steps:
       - uses: actions/checkout@v6
@@ -94,7 +101,28 @@ jobs:
           cache: pip
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: |
+          pip install -r requirements.txt
+          # check_secrets só precisa stdlib + dotenv (já em requirements)
+
+      # UCM-33: gate de secrets antes de migrar/deploy
+      - name: Validate production secrets
+        env:
+          ENVIRONMENT: production
+          DB_USER:          ${{ secrets.DB_USER }}
+          DB_PASSWORD:      ${{ secrets.DB_PASSWORD }}
+          DB_HOST:          ${{ secrets.DB_HOST }}
+          DB_NAME:          ${{ secrets.DB_NAME }}
+          API_KEY:          ${{ secrets.API_KEY }}
+          REDIS_PASSWORD:   ${{ secrets.REDIS_PASSWORD }}
+          SSH_HOST:         ${{ secrets.SSH_HOST }}
+          SSH_USERNAME:     ${{ secrets.SSH_USERNAME }}
+          SSH_PRIVATE_KEY:  ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          python scripts/check_secrets.py --environment production --scope etl,api,cd || {
+            echo "::error::Secrets obrigatórios ausentes. Ver docs/SECRETS.md e docs/runbooks/deploy-rollback.md"
+            exit 1
+          }
 
       - name: Run database migrations
         env:
@@ -106,6 +134,7 @@ jobs:
         run: python scripts/run_migration.py
 
       # H-09 FIX: deploy por imagem imutável do registry, não git pull
+      # UCM-34: rollback para tag :production (última boa) se health falhar
       - name: Deploy to production server
         uses: appleboy/ssh-action@v1
         with:
@@ -113,40 +142,82 @@ jobs:
           username: ${{ secrets.SSH_USERNAME }}
           key:      ${{ secrets.SSH_PRIVATE_KEY }}
           port:     ${{ secrets.SSH_PORT }}
-          envs:     DOCKER_IMAGE
+          envs:     DOCKER_IMAGE,PREV_DOCKER_IMAGE
           script: |
             set -e
             cd /opt/used-cars-analysis
 
-            # Guardar ID de container atual para rollback
-            PREV_ID=$(docker ps -q -f name=used_cars_ml_dashbord-app-1 2>/dev/null || echo "")
+            echo "Deploying: $DOCKER_IMAGE"
+            echo "Rollback target: $PREV_DOCKER_IMAGE"
 
-            # Pull da imagem imutável pelo SHA (não git pull)
             docker pull "$DOCKER_IMAGE"
+
+            # Subir nova imagem
             DOCKER_IMAGE="$DOCKER_IMAGE" docker compose up -d --remove-orphans
 
-            # Verificar saúde pós-deploy (30s)
-            sleep 15
-            if ! curl -sf http://localhost:8000/health; then
-              echo "Health check falhou — revertendo"
-              docker compose down
-              if [ -n "$PREV_ID" ]; then
-                docker start "$PREV_ID"
+            # Health check (até ~45s)
+            ok=0
+            for i in 1 2 3 4 5 6 7 8 9 10; do
+              if curl -sf http://localhost:8000/health; then
+                ok=1
+                break
+              fi
+              sleep 3
+            done
+
+            if [ "$ok" -ne 1 ]; then
+              echo "Health check falhou — rollback para $PREV_DOCKER_IMAGE"
+              docker compose down || true
+              if docker pull "$PREV_DOCKER_IMAGE"; then
+                DOCKER_IMAGE="$PREV_DOCKER_IMAGE" docker compose up -d --remove-orphans
+                sleep 10
+                curl -sf http://localhost:8000/health || {
+                  echo "Rollback também falhou no health check"
+                  exit 1
+                }
+                echo "Rollback concluído com imagem anterior (:production)"
+              else
+                echo "Não foi possível puxar $PREV_DOCKER_IMAGE"
+                exit 1
               fi
               exit 1
             fi
 
+            # Promove a imagem atual para tag :production (ponto de rollback futuro)
+            docker tag "$DOCKER_IMAGE" "$PREV_DOCKER_IMAGE" || true
+            # Push da tag :production requer login no host — opcional:
+            # echo "$GHCR_TOKEN" | docker login ghcr.io -u USER --password-stdin
+            # docker push "$PREV_DOCKER_IMAGE"
+
             docker image prune -f
-            echo "Deploy concluído"
+            echo "Deploy concluído: $DOCKER_IMAGE"
         env:
-          DOCKER_IMAGE: ghcr.io/${{ github.repository_owner }}/used-cars-ml:sha-${{ github.sha }}
+          DOCKER_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
+          PREV_DOCKER_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:production
+
+      - name: Post deploy summary
+        if: always()
+        run: |
+          {
+            echo "## CD — Production Deploy"
+            echo ""
+            echo "| Campo | Valor |"
+            echo "|-------|-------|"
+            echo "| Tag | \`${{ github.ref_name }}\` |"
+            echo "| Image | \`sha-${{ github.sha }}\` |"
+            echo "| Staging gate | ${{ needs.staging-gate.result }} |"
+            echo "| Model check | ${{ needs.check-model.result }} |"
+            echo "| Deploy | ${{ job.status }} |"
+            echo ""
+            echo "Runbook: docs/runbooks/deploy-rollback.md"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Notify success
         if: success()
         uses: rtCamp/action-slack-notify@v2
         env:
           SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
-          SLACK_MESSAGE: ":rocket: Deploy *${{ github.ref_name }}* em produção com sucesso!"
+          SLACK_MESSAGE: ":rocket: Deploy *${{ github.ref_name }}* em produção (sha-${{ github.sha }})"
           SLACK_COLOR: good
 
       - name: Notify failure
@@ -154,5 +225,5 @@ jobs:
         uses: rtCamp/action-slack-notify@v2
         env:
           SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
-          SLACK_MESSAGE: ":fire: Deploy *${{ github.ref_name }}* FALHOU — rollback executado"
+          SLACK_MESSAGE: ":fire: Deploy *${{ github.ref_name }}* FALHOU — ver rollback em docs/runbooks/deploy-rollback.md"
           SLACK_COLOR: danger
