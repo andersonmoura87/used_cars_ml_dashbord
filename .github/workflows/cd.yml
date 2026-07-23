@@ -88,9 +88,10 @@ jobs:
       contents: read
       packages: read
 
+    # Nota: jobs.*.env NÃO tem contexto `env` — usar github/vars/literals
     env:
-      DOCKER_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
-      PREV_DOCKER_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:production
+      DOCKER_IMAGE: ghcr.io/${{ github.repository_owner }}/used-cars-ml:sha-${{ github.sha }}
+      PREV_DOCKER_IMAGE: ghcr.io/${{ github.repository_owner }}/used-cars-ml:production
 
     steps:
       - uses: actions/checkout@v6
@@ -191,9 +192,6 @@ jobs:
 
             docker image prune -f
             echo "Deploy concluído: $DOCKER_IMAGE"
-        env:
-          DOCKER_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
-          PREV_DOCKER_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:production
 
       - name: Post deploy summary
         if: always()

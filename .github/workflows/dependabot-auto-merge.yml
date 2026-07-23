@@ -1,9 +1,10 @@
 name: Dependabot Auto-merge
 
+# fetch-metadata exige evento pull_request / pull_request_target.
+# workflow_run não carrega payload de PR → falha com "PR is not from Dependabot".
 on:
-  workflow_run:
-    workflows: ["CI"]
-    types: [completed]
+  pull_request_target:
+    types: [opened, synchronize, reopened]
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
@@ -16,40 +17,22 @@ jobs:
   auto-merge:
     name: Auto-merge Dependabot patch/minor
     runs-on: ubuntu-latest
-    if: |
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.actor.login == 'dependabot[bot]'
+    if: github.actor == 'dependabot[bot]'
 
     steps:
-      - uses: actions/checkout@v6
-
-      - name: Get PR number from workflow run
-        id: pr
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
-        run: |
-          PR_NUMBER=$(gh pr list --state open \
-            --json number,headRefOid \
-            --jq ".[] | select(.headRefOid == \"$HEAD_SHA\") | .number" | head -1)
-          echo "number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
-
       - name: Fetch Dependabot metadata
         id: metadata
-        if: steps.pr.outputs.number != ''
-        uses: dependabot/fetch-metadata@v3
+        uses: dependabot/fetch-metadata@v2
         with:
           github-token: "${{ secrets.GITHUB_TOKEN }}"
-          pr-number: ${{ steps.pr.outputs.number }}
 
       - name: Approve patch or minor updates
         if: |
-          steps.pr.outputs.number != '' &&
-          (steps.metadata.outputs.update-type == 'version-update:semver-patch' ||
-           steps.metadata.outputs.update-type == 'version-update:semver-minor')
+          steps.metadata.outputs.update-type == 'version-update:semver-patch' ||
+          steps.metadata.outputs.update-type == 'version-update:semver-minor'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           gh pr review "$PR_NUMBER" \
             --approve \
@@ -57,21 +40,18 @@ jobs:
 
       - name: Enable auto-merge for patch or minor
         if: |
-          steps.pr.outputs.number != '' &&
-          (steps.metadata.outputs.update-type == 'version-update:semver-patch' ||
-           steps.metadata.outputs.update-type == 'version-update:semver-minor')
+          steps.metadata.outputs.update-type == 'version-update:semver-patch' ||
+          steps.metadata.outputs.update-type == 'version-update:semver-minor'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: gh pr merge "$PR_NUMBER" --auto --squash
 
       - name: Label and comment major bumps for manual review
-        if: |
-          steps.pr.outputs.number != '' &&
-          steps.metadata.outputs.update-type == 'version-update:semver-major'
+        if: steps.metadata.outputs.update-type == 'version-update:semver-major'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
           DEP_NAMES: ${{ steps.metadata.outputs.dependency-names }}
           PREV_VERSION: ${{ steps.metadata.outputs.previous-version }}
           NEW_VERSION: ${{ steps.metadata.outputs.new-version }}
