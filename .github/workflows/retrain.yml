@@ -85,9 +85,9 @@ jobs:
 
     steps:
       # ── Setup ────────────────────────────────────────────────────────────────
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
@@ -100,7 +100,7 @@ jobs:
 
       # ── Restaurar dados de referência de drift (cache entre runs) ────────────
       - name: Restore drift reference cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: data/quality/drift_reference.parquet
           key: drift-reference-${{ github.repository }}-${{ hashFiles('data/processed/cars_abt.csv') }}
@@ -132,7 +132,7 @@ jobs:
       # ── Upload artefatos ─────────────────────────────────────────────────────
       - name: Upload drift + comparison reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: retrain-reports-${{ github.run_number }}
           path: |
@@ -143,7 +143,7 @@ jobs:
       # ── Salvar referência atualizada no cache ────────────────────────────────
       - name: Save drift reference
         if: inputs.save_reference == true && steps.pipeline.outputs.drift_detected == 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: data/quality/drift_reference.parquet
           key: drift-reference-${{ github.repository }}-${{ hashFiles('data/processed/cars_abt.csv') }}
@@ -195,7 +195,7 @@ jobs:
 
       - name: Upload Model Card
         if: always() && steps.model_card.outcome == 'success'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: model-card-retrain-${{ github.run_number }}
           path: docs/model_cards/
