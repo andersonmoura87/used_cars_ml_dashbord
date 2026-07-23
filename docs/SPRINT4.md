@@ -14,7 +14,7 @@
 | ID | Título | Pontos | Prioridade | Depende |
 |----|--------|--------|------------|---------|
 | **UCM-27** | Unificar pipeline ETL: stub Prefect + deprecar paths paralelos + CI/docs | 5 | Critical | — |
-| **UCM-28** | Remover módulos ETL legados após período de deprecação (process_data, load_data, validate_data, DataCleaner, PostgresLoader) | 3 | High | UCM-27 |
+| **UCM-28** | Remover módulos ETL legados após período de deprecação (process_data, load_data, validate_data, DataCleaner, PostgresLoader) | 3 | High | UCM-27 ✅ |
 | **UCM-29** | Realinhar/remover testes skipped (`test_pipeline.py`, `test_db.py`) ao canônico | 3 | High | UCM-27 ✅ |
 
 ## Epic B — Qualidade & docs
@@ -46,9 +46,8 @@
 ## Ordem sugerida nesta sprint
 
 ```
-UCM-27 ✅ → UCM-29 ✅ → UCM-30 ✅ → UCM-33 ✅ → UCM-34 ✅
-     ↘ UCM-28 (fim da sprint — deletar módulos deprecated)
-UCM-31 / UCM-35 / UCM-36 em paralelo se houver capacidade
+UCM-27 ✅ → UCM-29 ✅ → UCM-30 ✅ → UCM-33 ✅ → UCM-34 ✅ → UCM-28 ✅
+UCM-31 / UCM-35 / UCM-36 / UCM-37 em paralelo se houver capacidade
 ```
 
 ## Definição de pronto (Sprint 4)
@@ -58,6 +57,6 @@ UCM-31 / UCM-35 / UCM-36 em paralelo se houver capacidade
 - [x] README reflete stack atual (UCM-30)
 - [x] `check_secrets --scope etl|api|cd` no caminho de deploy (UCM-33)
 - [x] CD staging→prod descrito e testável (UCM-34)
-- [ ] UCM-28 — deletar módulos deprecated (fim da sprint)
+- [x] UCM-28 — módulos ETL deprecated removidos
 
 Import Jira: `jira_import_sprint4.csv`

@@ -31,7 +31,7 @@ data/
 python -m src.etl.run_pipeline
 ```
 
-Ver `docs/ETL.md` para pipelines deprecados (stub Prefect, load_data legado, etc.).
+Ver `docs/ETL.md` para o pipeline canônico (`python -m src.etl.run_pipeline`).
 
 ## Notas
 

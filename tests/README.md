@@ -3,12 +3,12 @@
 ```
 tests/
 ├── unit/               # Testes unitários (sem I/O real)
-│   ├── test_cleaning.py
-│   ├── test_db.py          # skipped — requer DB populado
+│   ├── test_db.py          # unitários mockados + integration opcional
 │   ├── test_extract.py     # ETL extract
 │   ├── test_transform.py   # ETL transform
 │   ├── test_load.py        # ETL load (mocks SQLAlchemy)
-│   └── test_run_pipeline.py
+│   ├── test_run_pipeline.py
+│   └── test_cleaning.py    # utils.clean_prices
 ├── integration/        # (futuro)
 ├── smoke/              # Smoke pós-deploy (API viva)
 │   ├── conftest.py
