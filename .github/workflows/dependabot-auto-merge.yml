@@ -1,17 +1,18 @@
 name: Dependabot Auto-merge
 
-# fetch-metadata exige evento pull_request / pull_request_target.
-# workflow_run não carrega payload de PR → falha com "PR is not from Dependabot".
+# fetch-metadata exige pull_request / pull_request_target (não workflow_run).
 on:
   pull_request_target:
     types: [opened, synchronize, reopened]
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  GH_REPO: ${{ github.repository }}
 
 permissions:
   contents: write
   pull-requests: write
+  issues: write  # criar label major-version-bump se necessário
 
 jobs:
   auto-merge:
@@ -26,7 +27,7 @@ jobs:
         with:
           github-token: "${{ secrets.GITHUB_TOKEN }}"
 
-      - name: Approve patch or minor updates
+      - name: Approve and enable auto-merge (patch/minor)
         if: |
           steps.metadata.outputs.update-type == 'version-update:semver-patch' ||
           steps.metadata.outputs.update-type == 'version-update:semver-minor'
@@ -37,17 +38,9 @@ jobs:
           gh pr review "$PR_NUMBER" \
             --approve \
             --body "Auto-aprovado: patch/minor sem breaking changes esperadas."
+          gh pr merge "$PR_NUMBER" --auto --squash
 
-      - name: Enable auto-merge for patch or minor
-        if: |
-          steps.metadata.outputs.update-type == 'version-update:semver-patch' ||
-          steps.metadata.outputs.update-type == 'version-update:semver-minor'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: gh pr merge "$PR_NUMBER" --auto --squash
-
-      - name: Label and comment major bumps for manual review
+      - name: Flag major bumps for manual review
         if: steps.metadata.outputs.update-type == 'version-update:semver-major'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -56,8 +49,18 @@ jobs:
           PREV_VERSION: ${{ steps.metadata.outputs.previous-version }}
           NEW_VERSION: ${{ steps.metadata.outputs.new-version }}
         run: |
-          gh pr edit "$PR_NUMBER" --add-label "major-version-bump" 2>/dev/null || true
-          BODY="Major version bump detected -- manual review required before merging."
-          BODY="$BODY Package: $DEP_NAMES  Version: $PREV_VERSION -> $NEW_VERSION"
-          BODY="$BODY Please check the CHANGELOG for breaking changes before approving."
+          # Label pode não existir ainda — cria e ignora conflito
+          gh label create "major-version-bump" \
+            --description "Dependabot major bump — review manual" \
+            --color "B60205" 2>/dev/null || true
+          gh pr edit "$PR_NUMBER" --add-label "major-version-bump" || true
+
+          BODY="Major version bump — review manual antes do merge."
+          BODY="$BODY"$'\n'"Packages: $DEP_NAMES"
+          if [ -n "$PREV_VERSION$NEW_VERSION" ]; then
+            BODY="$BODY"$'\n'"Version: ${PREV_VERSION:-?} → ${NEW_VERSION:-?}"
+          fi
+          BODY="$BODY"$'\n'"Verifique o CHANGELOG antes de aprovar."
+
           gh pr comment "$PR_NUMBER" --body "$BODY"
+          echo "::notice::Major bump no PR #$PR_NUMBER — auto-merge não aplicado (esperado)."
