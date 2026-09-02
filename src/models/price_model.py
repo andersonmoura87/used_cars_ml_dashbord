@@ -4,6 +4,7 @@ import hashlib
 import json
 import logging
 import os
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -15,12 +16,25 @@ import numpy as np
 import pandas as pd
 import xgboost as xgb
 from scipy import stats
-from sklearn.model_selection import TimeSeriesSplit, cross_validate
+from sklearn.base import clone
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+from sklearn.model_selection import TimeSeriesSplit
 from sklearn.preprocessing import LabelEncoder, RobustScaler
 
 logger = logging.getLogger(__name__)
 
 _MODELS_DIR = Path(__file__).parent.parent.parent / "models"
+
+
+@dataclass
+class _PreprocessorState:
+    """Preprocessadores fitados em um único conjunto de treino."""
+
+    label_encoders: Dict[str, LabelEncoder]
+    scaler: RobustScaler
+    numeric_fill_values: Dict[str, float]
+    feature_names: List[str]
+
 
 # ── SHAP — importação opcional (análise de feature importance avançada) ────────
 try:
@@ -53,9 +67,10 @@ def _mlflow_active() -> bool:
     """Retorna True se MLflow estiver disponível e MLFLOW_TRACKING_URI configurado."""
     return _MLFLOW_AVAILABLE and bool(os.getenv("MLFLOW_TRACKING_URI"))
 
+
 class AdvancedPriceModel:
     """Classe para modelagem avançada de preços de veículos."""
-    
+
     def __init__(
         self,
         categorical_features: List[str],
@@ -65,13 +80,14 @@ class AdvancedPriceModel:
         self.categorical_features = categorical_features
         self.numerical_features = numerical_features
         self.target = target
-        
+
         # Preprocessadores
         self.label_encoders = {
             col: LabelEncoder() for col in categorical_features
         }
         self.scaler = RobustScaler()
-        
+        self.numeric_fill_values: Dict[str, float] = {}
+
         # Modelo
         self.model = xgb.XGBRegressor(
             n_estimators=100,
@@ -82,10 +98,53 @@ class AdvancedPriceModel:
             colsample_bytree=0.8,
             random_state=42
         )
-        
+
         self.feature_names: List[str] | None = None
+        self._temporal_cv_preprocessors: List[_PreprocessorState] = []
         self._active_run_id: str | None = None  # preenchido após train() com MLflow
-        
+
+    def _fit_preprocessor(self, df: pd.DataFrame) -> _PreprocessorState:
+        """Fita um estado novo usando exclusivamente as linhas recebidas."""
+        encoders: Dict[str, LabelEncoder] = {}
+        feature_names: List[str] = []
+        for col in self.categorical_features:
+            if col in df.columns:
+                values = df[col].fillna("__missing__").astype(str)
+                encoder = LabelEncoder()
+                encoder.fit(pd.concat([values, pd.Series(["__unknown__"])]))
+                encoders[col] = encoder
+                feature_names.append(col)
+
+        scaler = RobustScaler()
+        fill_values: Dict[str, float] = {}
+        if self.numerical_features:
+            numeric_data = df[self.numerical_features].apply(pd.to_numeric, errors="coerce")
+            medians = numeric_data.median().fillna(0.0)
+            fill_values = medians.astype(float).to_dict()
+            scaler.fit(numeric_data.fillna(fill_values))
+            feature_names.extend(self.numerical_features)
+
+        return _PreprocessorState(encoders, scaler, fill_values, feature_names)
+
+    def _transform_with_preprocessor(
+        self,
+        df: pd.DataFrame,
+        state: _PreprocessorState,
+    ) -> pd.DataFrame:
+        """Transforma dados sem alterar nem refitar o estado recebido."""
+        X = pd.DataFrame(index=df.index)
+        for col, encoder in state.label_encoders.items():
+            values = df[col].fillna("__missing__").astype(str)
+            known = set(encoder.classes_)
+            safe_values = values.where(values.isin(known), "__unknown__")
+            X[col] = encoder.transform(safe_values)
+
+        if self.numerical_features:
+            numeric_data = df[self.numerical_features].apply(pd.to_numeric, errors="coerce")
+            numeric_data = numeric_data.fillna(state.numeric_fill_values)
+            X[self.numerical_features] = state.scaler.transform(numeric_data)
+        return X
+
     def prepare_features(self, df: pd.DataFrame, fit: bool = False) -> pd.DataFrame:
         """
         Prepara features para o modelo.
@@ -95,25 +154,21 @@ class AdvancedPriceModel:
             fit: Se True, re-fita encoders e scaler (somente no treino).
                  Se False (padrão), apenas transforma — correto para inferência.
         """
-        X = pd.DataFrame()
+        if fit:
+            state = self._fit_preprocessor(df)
+            self.label_encoders = state.label_encoders
+            self.scaler = state.scaler
+            self.numeric_fill_values = state.numeric_fill_values
+            self.feature_names = state.feature_names
+        else:
+            state = _PreprocessorState(
+                self.label_encoders,
+                self.scaler,
+                self.numeric_fill_values,
+                self.feature_names or [],
+            )
+        return self._transform_with_preprocessor(df, state)
 
-        for col in self.categorical_features:
-            if col in df.columns:
-                if fit:
-                    X[col] = self.label_encoders[col].fit_transform(df[col].fillna('missing'))
-                else:
-                    X[col] = self.label_encoders[col].transform(df[col].fillna('missing'))
-
-        if self.numerical_features:
-            numeric_data = df[self.numerical_features].fillna(df[self.numerical_features].median())
-            if fit:
-                X[self.numerical_features] = self.scaler.fit_transform(numeric_data)
-            else:
-                X[self.numerical_features] = self.scaler.transform(numeric_data)
-
-        self.feature_names = X.columns.tolist()
-        return X
-    
     def train(
         self,
         df: pd.DataFrame,
@@ -132,24 +187,39 @@ class AdvancedPriceModel:
             mlflow_run_name:    Nome descritivo do run (auto-gerado se None).
             mlflow_tags:        Tags adicionais para o run.
         """
-        X = self.prepare_features(df, fit=True)
         y = df[self.target]
 
         if validation_method == "time_series":
             tscv = TimeSeriesSplit(n_splits=5)
-            cv_results = cross_validate(
-                self.model, X, y,
-                cv=tscv,
-                scoring=["r2", "neg_mean_squared_error", "neg_mean_absolute_error"],
-                return_train_score=False,
-            )
+            fold_metrics = []
+            self._temporal_cv_preprocessors = []
+            for train_indices, validation_indices in tscv.split(df):
+                train_df = df.iloc[train_indices]
+                validation_df = df.iloc[validation_indices]
+                state = self._fit_preprocessor(train_df)
+                self._temporal_cv_preprocessors.append(state)
+                X_train = self._transform_with_preprocessor(train_df, state)
+                X_validation = self._transform_with_preprocessor(validation_df, state)
+                fold_model = clone(self.model)
+                fold_model.fit(X_train, y.iloc[train_indices])
+                predictions = fold_model.predict(X_validation)
+                fold_metrics.append(
+                    (
+                        r2_score(y.iloc[validation_indices], predictions),
+                        mean_squared_error(y.iloc[validation_indices], predictions),
+                        mean_absolute_error(y.iloc[validation_indices], predictions),
+                    )
+                )
             metrics = {
-                "r2":   float(np.mean(cv_results["test_r2"])),
-                "rmse": float(np.sqrt(-np.mean(cv_results["test_neg_mean_squared_error"]))),
-                "mae":  float(-np.mean(cv_results["test_neg_mean_absolute_error"])),
+                "r2": float(np.mean([metric[0] for metric in fold_metrics])),
+                "rmse": float(np.sqrt(np.mean([metric[1] for metric in fold_metrics]))),
+                "mae": float(np.mean([metric[2] for metric in fold_metrics])),
             }
+            X = self.prepare_features(df, fit=True)
             self.model.fit(X, y)
         else:
+            self._temporal_cv_preprocessors = []
+            X = self.prepare_features(df, fit=True)
             self.model.fit(X, y)
             y_pred = self.model.predict(X)
             metrics = {
@@ -255,8 +325,8 @@ class AdvancedPriceModel:
                 run_name, metrics.get("r2", 0), metrics.get("rmse", 0),
                 run.info.run_id,
             )
-    
-    def predict(self, df: pd.DataFrame, return_std: bool = True) -> Tuple[pd.Series, pd.Series]:
+
+    def predict(self, df: pd.DataFrame, return_std: bool = True) -> Tuple[pd.Series, Optional[pd.Series]]:
         """Faz previsões com intervalos de confiança usando bootstrap."""
         X = self.prepare_features(df, fit=False)
 
@@ -286,11 +356,11 @@ class AdvancedPriceModel:
             return predictions, uncertainty
 
         return predictions, None
-    
+
     def analyze_residuals(self, y_true: pd.Series, y_pred: pd.Series) -> Dict[str, Any]:
         """Analisa resíduos do modelo."""
         residuals = y_true - y_pred
-        
+
         # Estatísticas básicas
         stats_dict = {
             'residuals_mean': float(np.mean(residuals)),
@@ -298,17 +368,17 @@ class AdvancedPriceModel:
             'residuals_skew': float(stats.skew(residuals)),
             'residuals_kurtosis': float(stats.kurtosis(residuals))
         }
-        
+
         # Teste de normalidade
         _, shapiro_p = stats.shapiro(residuals)
         stats_dict['residuals_normality_p'] = float(shapiro_p)
-        
+
         # Teste de heterocedasticidade
         _, white_p = self._white_test(y_pred, residuals)
         stats_dict['heteroscedasticity_test'] = (None, float(white_p))
-        
+
         return stats_dict
-    
+
     def get_feature_importance(self, df: pd.DataFrame = None, method: str = 'gain') -> pd.Series:
         """
         Retorna importância das features.
@@ -338,7 +408,7 @@ class AdvancedPriceModel:
             )
 
         return importance.sort_values(ascending=False)
-    
+
     # ── persistência ──────────────────────────────────────────────────────────
 
     @staticmethod
@@ -377,6 +447,7 @@ class AdvancedPriceModel:
             "numerical_features": self.numerical_features,
             "target": self.target,
             "feature_names": self.feature_names,
+            "numeric_fill_values": self.numeric_fill_values,
             "saved_at": ts,
             "version": f"{ts}{suffix}",
         }
@@ -448,6 +519,7 @@ class AdvancedPriceModel:
         instance.label_encoders = payload["label_encoders"]
         instance.scaler = payload["scaler"]
         instance.feature_names = payload["feature_names"]
+        instance.numeric_fill_values = payload.get("numeric_fill_values", {})
         logger.info("Modelo carregado de '%s' (versão %s)", candidate, payload.get("version"))
         return instance
 
@@ -491,16 +563,16 @@ class AdvancedPriceModel:
             'pred': y_pred,
             'pred2': y_pred ** 2
         })
-        
+
         # Regressão dos resíduos quadrados
         resid2 = residuals ** 2
-        
+
         # Calcular R² da regressão auxiliar
         r2 = np.corrcoef(X['pred'], resid2)[0, 1] ** 2
-        
+
         # Estatística do teste
         n = len(y_pred)
         stat = n * r2
         p_value = 1 - stats.chi2.cdf(stat, df=2)
-        
-        return stat, p_value 
+
+        return stat, p_value
