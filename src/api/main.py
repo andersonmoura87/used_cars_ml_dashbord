@@ -5,6 +5,7 @@ import os
 import secrets
 import sys
 import uuid
+from contextlib import asynccontextmanager
 from datetime import datetime
 
 from dotenv import load_dotenv
@@ -12,9 +13,14 @@ from fastapi import FastAPI, HTTPException, Request, Security, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.security.api_key import APIKeyHeader
+from starlette.concurrency import run_in_threadpool
 
 # UCM-22: Observabilidade — importação lazy para evitar falha se pacotes opcionais ausentes
 from src.api.telemetry import instrument_app, set_build_info, setup_telemetry
+from src.database.connection import (
+    check_database_readiness,
+    validate_database_config,
+)
 
 # M-02: Rate limiting
 try:
@@ -40,6 +46,18 @@ _ENVIRONMENT = os.getenv("ENVIRONMENT", "development").lower()
 _IS_PROD_LIKE = _ENVIRONMENT in ("production", "staging")
 _API_KEY = os.getenv("API_KEY", "")
 
+
+async def validate_startup_database_configuration() -> None:
+    """Falha cedo em produção/staging, sem conectar durante import do módulo."""
+    if _IS_PROD_LIKE:
+        validate_database_config(_ENVIRONMENT)
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    await validate_startup_database_configuration()
+    yield
+
 # C-03 FIX: fail-closed — em produção/staging sem API_KEY, o processo para.
 if _IS_PROD_LIKE and not _API_KEY:
     logger.critical(
@@ -56,21 +74,23 @@ if not _API_KEY:
     )
 
 # ── app — docs desabilitados em produção (M-01) ───────────────────────────────
-_docs_url    = None if _IS_PROD_LIKE else "/docs"
-_redoc_url   = None if _IS_PROD_LIKE else "/redoc"
+_docs_url = None if _IS_PROD_LIKE else "/docs"
+_redoc_url = None if _IS_PROD_LIKE else "/redoc"
 _openapi_url = None if _IS_PROD_LIKE else "/openapi.json"
 
 app = FastAPI(
     title="Used Cars Market Analysis API",
     description=(
         "API for analyzing used car listings data with focus on financing options.\n\n"
-        "**Authentication**: all endpoints (except `/health` and `/metrics`) require the header "
+        "**Authentication**: all endpoints (except `/health`, `/ready` and `/metrics`) require "
+        "the header "
         "`X-API-Key: <your_key>` configured in the `API_KEY` environment variable."
     ),
     version="1.0.0",
     docs_url=_docs_url,
     redoc_url=_redoc_url,
     openapi_url=_openapi_url,
+    lifespan=lifespan,
 )
 
 # UCM-22: inicializar OTEL + Prometheus e expor /metrics
@@ -93,6 +113,8 @@ else:
     logger.warning("slowapi não instalado — rate limiting desabilitado")
 
 # ── Low: Correlation ID — rastreabilidade por request ─────────────────────────
+
+
 @app.middleware("http")
 async def add_correlation_id(request: Request, call_next):
     correlation_id = request.headers.get("X-Correlation-ID") or str(uuid.uuid4())
@@ -103,6 +125,7 @@ async def add_correlation_id(request: Request, call_next):
 
 # ── Low: Request body size limit (default 10 MB) ──────────────────────────────
 _MAX_BODY_SIZE = int(os.getenv("MAX_REQUEST_BODY_BYTES", str(10 * 1024 * 1024)))  # 10 MB
+
 
 @app.middleware("http")
 async def limit_request_body(request: Request, call_next):
@@ -116,15 +139,17 @@ async def limit_request_body(request: Request, call_next):
     return await call_next(request)
 
 # ── M-03: Security headers ────────────────────────────────────────────────────
+
+
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):
     response = await call_next(request)
-    response.headers["X-Content-Type-Options"]  = "nosniff"
-    response.headers["X-Frame-Options"]          = "DENY"
-    response.headers["X-XSS-Protection"]         = "1; mode=block"
-    response.headers["Referrer-Policy"]          = "strict-origin-when-cross-origin"
-    response.headers["Permissions-Policy"]        = "geolocation=(), microphone=(), camera=()"
-    response.headers["Cache-Control"]            = "no-store"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+    response.headers["Cache-Control"] = "no-store"
     if _IS_PROD_LIKE:
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains; preload"
     return response
@@ -167,13 +192,27 @@ async def require_api_key(api_key: str | None = Security(_API_KEY_HEADER)) -> st
 # ── endpoints públicos ────────────────────────────────────────────────────────
 @app.get("/health", tags=["system"])
 async def health_check() -> dict:
-    """Endpoint público de health check — sem autenticação."""
+    """Liveness público: confirma apenas que o processo está vivo."""
     # M-04 FIX: não vazar informações de configuração interna
     return {
         "status": "healthy",
         "timestamp": datetime.now().isoformat(),
         "version": "1.0.0",
     }
+
+
+@app.get("/ready", tags=["system"])
+async def readiness_check():
+    """Readiness público: exige configuração válida e conexão com o banco."""
+    try:
+        await run_in_threadpool(check_database_readiness)
+    except Exception as exc:
+        logger.warning("Readiness do banco falhou (%s)", type(exc).__name__)
+        return JSONResponse(
+            status_code=503,
+            content={"status": "not_ready", "database": "unavailable"},
+        )
+    return {"status": "ready", "database": "available"}
 
 
 # ── error handlers ────────────────────────────────────────────────────────────

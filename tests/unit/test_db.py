@@ -48,8 +48,35 @@ class TestGetDatabaseUrl:
     def test_missing_password_raises(self, monkeypatch):
         monkeypatch.setenv("DB_USER", "u")
         monkeypatch.delenv("DB_PASSWORD", raising=False)
-        with pytest.raises(KeyError):
+        with pytest.raises(conn_mod.DatabaseConfigurationError, match="DB_PASSWORD"):
             conn_mod.get_database_url()
+
+    @pytest.mark.parametrize("environment", ["production", "staging"])
+    def test_prod_like_requires_all_components(self, monkeypatch, environment):
+        monkeypatch.setenv("ENVIRONMENT", environment)
+        monkeypatch.setenv("DB_USER", "u")
+        monkeypatch.setenv("DB_PASSWORD", "top-secret")
+        monkeypatch.delenv("DB_HOST", raising=False)
+        monkeypatch.delenv("DB_PORT", raising=False)
+        monkeypatch.delenv("DB_NAME", raising=False)
+
+        with pytest.raises(conn_mod.DatabaseConfigurationError) as exc_info:
+            conn_mod.validate_database_config()
+
+        message = str(exc_info.value)
+        assert "DB_HOST" in message and "DB_PORT" in message and "DB_NAME" in message
+        assert "top-secret" not in message
+
+    def test_development_has_no_implicit_user_or_password(self, monkeypatch):
+        monkeypatch.setenv("ENVIRONMENT", "development")
+        monkeypatch.delenv("DB_USER", raising=False)
+        monkeypatch.delenv("DB_PASSWORD", raising=False)
+
+        with pytest.raises(conn_mod.DatabaseConfigurationError) as exc_info:
+            conn_mod.validate_database_config()
+
+        assert "DB_USER" in str(exc_info.value)
+        assert "DB_PASSWORD" in str(exc_info.value)
 
 
 class TestCreateDbEngine:
@@ -57,16 +84,13 @@ class TestCreateDbEngine:
         monkeypatch.setenv("DB_USER", "u")
         monkeypatch.setenv("DB_PASSWORD", "p")
         mock_engine = MagicMock()
-        mock_conn = MagicMock()
-        mock_engine.connect.return_value.__enter__ = lambda s: mock_conn
-        mock_engine.connect.return_value.__exit__ = MagicMock(return_value=False)
 
         with patch("src.database.connection.create_engine", return_value=mock_engine) as ce:
             engine = conn_mod.create_db_engine()
 
         assert engine is mock_engine
         ce.assert_called_once()
-        mock_conn.execute.assert_called_once()
+        mock_engine.connect.assert_not_called()
 
     def test_sqlalchemy_error_propagates(self, monkeypatch):
         monkeypatch.setenv("DB_USER", "u")
@@ -77,6 +101,19 @@ class TestCreateDbEngine:
         ):
             with pytest.raises(SQLAlchemyError):
                 conn_mod.create_db_engine()
+
+    def test_error_log_does_not_expose_password(self, monkeypatch, caplog):
+        secret = "never-log-this-password"
+        monkeypatch.setenv("DB_USER", "u")
+        monkeypatch.setenv("DB_PASSWORD", secret)
+        with patch(
+            "src.database.connection.create_engine",
+            side_effect=SQLAlchemyError(f"connection failed: {secret}"),
+        ):
+            with pytest.raises(SQLAlchemyError):
+                conn_mod.create_db_engine()
+
+        assert secret not in caplog.text
 
 
 class TestTestConnection:
@@ -90,7 +127,7 @@ class TestTestConnection:
         mock_engine.connect.return_value.__exit__ = MagicMock(return_value=False)
 
         with patch("src.database.connection.create_db_engine", return_value=mock_engine):
-            # create_db_engine is called inside test_connection — also need SELECT 1 path
+            # test_connection delega o probe físico a check_database_readiness.
             assert conn_mod.test_connection() is True
 
     def test_returns_false_on_error(self, monkeypatch):
@@ -120,12 +157,27 @@ class TestGetDbSession:
         assert s1 is not None and s2 is not None
 
 
+class TestReadiness:
+    def test_executes_select_one_on_shared_engine(self, monkeypatch):
+        monkeypatch.setenv("DB_USER", "u")
+        monkeypatch.setenv("DB_PASSWORD", "p")
+        mock_engine = MagicMock()
+        mock_connection = MagicMock()
+        mock_engine.connect.return_value.__enter__ = lambda _context: mock_connection
+        mock_engine.connect.return_value.__exit__ = MagicMock(return_value=False)
+
+        with patch("src.database.connection.get_db_engine", return_value=mock_engine):
+            assert conn_mod.check_database_readiness() is True
+
+        mock_connection.execute.assert_called_once()
+
+
 @pytest.mark.integration
 def test_live_database_connection():
     """
     Integração opcional — só roda com INTEGRATION_DB=1 e DB_* configurados.
 
-    Não exige tabelas populadas (só SELECT 1 / version).
+    Não exige tabelas populadas (somente SELECT 1).
     """
     if os.getenv("INTEGRATION_DB", "").lower() not in ("1", "true", "yes"):
         pytest.skip("Defina INTEGRATION_DB=1 para rodar contra PostgreSQL real")
