@@ -173,6 +173,8 @@ class TestConsecutiveLoads:
                 expected_value = expected.loc[identity, field]
                 if pd.isna(expected_value):
                     expected_value = None
+                elif field == "posting_date":
+                    expected_value = expected_value.date()
                 assert getattr(car, field) == expected_value
 
     def test_price_change_adds_one_history_row_without_changing_car_id(self, sqlite_sessions):
