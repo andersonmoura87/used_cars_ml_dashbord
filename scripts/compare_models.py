@@ -42,14 +42,17 @@ import os
 import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    from mlflow.tracking import MlflowClient
 
 try:
     import mlflow
-    from mlflow.tracking import MlflowClient
+    from mlflow.tracking import MlflowClient as _MlflowClient
 except ImportError:
-    print("ERRO: mlflow não instalado. Execute: pip install mlflow")
-    sys.exit(1)
+    mlflow = None
+    _MlflowClient = None
 
 DEFAULT_MODEL = "used_cars_price_model"
 
@@ -77,13 +80,15 @@ class ModelMetrics:
         return f"v{self.version} [{self.stage}] R²={r2_s}  RMSE={rmse_s}  MAE={mae_s}"
 
 
-def _get_client() -> MlflowClient:
+def _get_client() -> "MlflowClient":
+    if mlflow is None or _MlflowClient is None:
+        raise RuntimeError("mlflow não instalado. Execute: pip install mlflow")
     uri = os.getenv("MLFLOW_TRACKING_URI")
     if not uri:
         print("ERRO: MLFLOW_TRACKING_URI não definido.")
         sys.exit(1)
     mlflow.set_tracking_uri(uri)
-    return MlflowClient()
+    return _MlflowClient()
 
 
 def _fetch_metrics(client: MlflowClient, version_obj) -> ModelMetrics:

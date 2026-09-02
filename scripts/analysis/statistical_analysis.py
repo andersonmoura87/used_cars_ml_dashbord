@@ -100,17 +100,16 @@ class CarStatsAnalyzer:
     
     def price_mileage_correlation(self) -> Dict:
         """4. Correlação entre quilometragem e preço."""
-        # Calcular correlação
-        correlation = self.df['price'].corr(self.df['odometer'])
-        
-        # Teste de significância
-        r, p_value = stats.pearsonr(
-            self.df['price'].dropna(),
-            self.df['odometer'].dropna()
-        )
+        # Correlação e significância devem usar exatamente os mesmos pares.
+        paired = self.df[['price', 'odometer']].dropna()
+        if len(paired) < 2:
+            raise ValueError("São necessárias ao menos duas observações pareadas")
+        if paired['price'].nunique() < 2 or paired['odometer'].nunique() < 2:
+            raise ValueError("Correlação de Pearson exige variáveis não constantes")
+        r, p_value = stats.pearsonr(paired['price'], paired['odometer'])
         
         results = {
-            'correlation': float(correlation),
+            'correlation': float(r),
             'p_value': float(p_value),
             'significant': bool(p_value < 0.05)
         }
@@ -195,4 +194,4 @@ if __name__ == "__main__":
     # Log dos resultados
     for name, result in results.items():
         print(f"\n=== {name} ===")
-        print(json.dumps(result, indent=2)) 
+        print(json.dumps(result, indent=2))

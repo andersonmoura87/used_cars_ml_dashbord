@@ -129,7 +129,7 @@ def train_price_model(df: pd.DataFrame) -> dict:
     shap_importance = model.get_feature_importance(method='shap')
     
     # Fazer previsões com intervalos de confiança
-    predictions, uncertainty = model.predict(df)
+    predictions, uncertainty = model.predict(df, return_std=True)
     
     # Analisar resíduos
     residuals_analysis = model.analyze_residuals(df['price'], predictions)
@@ -174,4 +174,4 @@ def main():
     logger.info('Análise completa finalizada!')
 
 if __name__ == '__main__':
-    main() 
+    main()

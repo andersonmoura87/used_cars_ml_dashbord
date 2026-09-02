@@ -45,6 +45,7 @@ CATEGORICAL_FEATURES = [
 ]
 NUMERICAL_FEATURES = ["year", "odometer", "vehicle_age"]
 TARGET = "price"
+TIME_SERIES_SPLITS = 5
 
 
 def parse_args() -> argparse.Namespace:
@@ -101,6 +102,31 @@ def load_dataset(path: str) -> pd.DataFrame:
     return df
 
 
+def prepare_temporal_training_data(df: pd.DataFrame) -> pd.DataFrame:
+    """Valida e ordena linhas cronologicamente antes do TimeSeriesSplit."""
+    if "posting_date" not in df.columns:
+        raise ValueError("Validação time_series exige a coluna posting_date")
+
+    prepared = df.copy()
+    prepared["posting_date"] = pd.to_datetime(
+        prepared["posting_date"], errors="coerce", utc=True
+    )
+    invalid_dates = int(prepared["posting_date"].isna().sum())
+    if invalid_dates:
+        logger.warning(
+            "Descartando %d de %d registros com posting_date inválida",
+            invalid_dates,
+            len(prepared),
+        )
+    prepared = prepared.dropna(subset=["posting_date"])
+    if len(prepared) <= TIME_SERIES_SPLITS:
+        raise ValueError(
+            "Validação time_series exige ao menos "
+            f"{TIME_SERIES_SPLITS + 1} datas válidas; restaram {len(prepared)}"
+        )
+    return prepared.sort_values("posting_date", kind="mergesort").reset_index(drop=True)
+
+
 def main() -> None:
     args = parse_args()
     models_dir = Path(args.models_dir)
@@ -114,11 +140,25 @@ def main() -> None:
 
     df = load_dataset(args.data)
 
+    if args.validation == "time_series":
+        try:
+            df = prepare_temporal_training_data(df)
+        except ValueError as exc:
+            logger.error("%s", exc)
+            sys.exit(2)
+
     # manter apenas colunas disponíveis
     cat_feats = [c for c in CATEGORICAL_FEATURES if c in df.columns]
     num_feats = [c for c in NUMERICAL_FEATURES if c in df.columns]
     required = cat_feats + num_feats + [TARGET]
     df = df[required].dropna(subset=[TARGET])
+    if args.validation == "time_series" and len(df) <= TIME_SERIES_SPLITS:
+        logger.error(
+            "Validação time_series exige ao menos %d targets válidos; restaram %d",
+            TIME_SERIES_SPLITS + 1,
+            len(df),
+        )
+        sys.exit(2)
 
     logger.info(
         "Features: categoricas=%s | numericas=%s | target=%s",
