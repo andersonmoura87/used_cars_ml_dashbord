@@ -246,7 +246,7 @@ def test_orm_creates_critical_postgresql_types_and_foreign_key(postgres_sessions
 
         assert str(car_columns["id"]["type"]) == "BIGINT"
         assert str(car_columns["posting_date"]["type"]) == "DATE"
-        assert car_columns["has_installments"]["nullable"] is True
+        assert car_columns["has_installments"]["nullable"] is False
         assert str(market_columns["days_listed"]["type"]) == "INTEGER"
         assert market_columns["calculated_at"]["type"].timezone is True
         assert str(history_columns["car_id"]["type"]) == "BIGINT"

@@ -52,7 +52,7 @@ class Car(Base):
     longitude = Column(Float)
     posting_date = Column(Date)
     vehicle_age = Column(Integer)
-    has_installments = Column(Boolean, server_default=text("false"))
+    has_installments = Column(Boolean, nullable=False, server_default=text("false"))
     monthly_payment = Column(Float)
     down_payment = Column(Float)
     installments = Column(Integer)
