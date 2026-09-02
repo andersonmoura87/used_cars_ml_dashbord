@@ -47,7 +47,9 @@ def migration_engine():
 @pytest.fixture(autouse=True)
 def legacy_schema(migration_engine):
     with migration_engine.begin() as connection:
-        connection.execute(text("DROP TABLE IF EXISTS market_stats, cars CASCADE"))
+        connection.execute(
+            text("DROP TABLE IF EXISTS schema_migrations, market_stats, cars CASCADE")
+        )
         connection.execute(
             text("CREATE TABLE cars (id SERIAL PRIMARY KEY, original_id TEXT)")
         )
