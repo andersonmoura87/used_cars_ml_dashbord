@@ -27,6 +27,7 @@ MANIFEST
 venv/
 venv310/
 .venv/
+.venv2.0/
 env/
 ENV/
 env.bak/
