@@ -137,6 +137,14 @@ def test_stats_path_is_not_captured_by_car_id_route():
     assert match is Match.NONE
 
 
+def test_non_integer_path_is_not_accepted_as_car_id():
+    dynamic_route = next(route for route in cars.router.routes if route.path == "/{car_id:int}")
+    match, _ = dynamic_route.matches(
+        {"type": "http", "method": "GET", "path": "/not-an-id", "root_path": ""}
+    )
+    assert match is Match.NONE
+
+
 def test_missing_car_preserves_404():
     class Query:
         def filter(self, *_args):
@@ -152,6 +160,19 @@ def test_missing_car_preserves_404():
     with pytest.raises(HTTPException) as exc_info:
         asyncio.run(cars.get_car(123, Session()))
     assert exc_info.value.status_code == 404
+
+
+def test_unexpected_database_error_returns_sanitized_500():
+    class Session:
+        def query(self, *_args):
+            raise RuntimeError("internal database detail")
+
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(cars.get_car(123, Session()))
+
+    assert exc_info.value.status_code == 500
+    assert exc_info.value.detail == "Error retrieving car"
+    assert "internal database detail" not in exc_info.value.detail
 
 
 def test_existing_car_is_returned():

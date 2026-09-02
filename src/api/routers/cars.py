@@ -9,6 +9,7 @@ import logging
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
+
 @router.get("/", response_model=List[CarResponse])
 async def get_cars(
     skip: int = Query(0, ge=0),
@@ -47,7 +48,7 @@ async def get_cars(
         raise HTTPException(status_code=500, detail="Error retrieving cars")
 
 
-@router.get("/{car_id}", response_model=CarResponse)
+@router.get("/{car_id:int}", response_model=CarResponse)
 async def get_car(car_id: int, db: Session = Depends(get_db)):
     """Get a specific car by ID."""
     try:
@@ -55,6 +56,8 @@ async def get_car(car_id: int, db: Session = Depends(get_db)):
         if car is None:
             raise HTTPException(status_code=404, detail="Car not found")
         return car
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error getting car {car_id}: {str(e)}")
         raise HTTPException(status_code=500, detail="Error retrieving car")
@@ -101,10 +104,18 @@ async def get_financing_stats(
     try:
         query = db.query(
             func.count(CarORM.id).label("total_cars"),
-            func.count(CarORM.id).filter(CarORM.has_installments == True).label("total_financed"),  # noqa: E712
-            func.avg(CarORM.monthly_payment).filter(CarORM.has_installments == True).label("avg_monthly_payment"),  # noqa: E712
-            func.avg(CarORM.down_payment).filter(CarORM.has_installments == True).label("avg_down_payment"),  # noqa: E712
-            func.avg(CarORM.installments).filter(CarORM.has_installments == True).label("avg_installments"),  # noqa: E712
+            func.count(CarORM.id)
+            .filter(CarORM.has_installments == True)  # noqa: E712
+            .label("total_financed"),
+            func.avg(CarORM.monthly_payment)
+            .filter(CarORM.has_installments == True)  # noqa: E712
+            .label("avg_monthly_payment"),
+            func.avg(CarORM.down_payment)
+            .filter(CarORM.has_installments == True)  # noqa: E712
+            .label("avg_down_payment"),
+            func.avg(CarORM.installments)
+            .filter(CarORM.has_installments == True)  # noqa: E712
+            .label("avg_installments"),
         )
 
         if manufacturer:
@@ -117,11 +128,17 @@ async def get_financing_stats(
         return {
             "total_cars": result.total_cars,
             "total_financed": result.total_financed,
-            "financing_percentage": (result.total_financed / result.total_cars * 100) if result.total_cars > 0 else 0,
-            "avg_monthly_payment": float(result.avg_monthly_payment) if result.avg_monthly_payment else 0,
+            "financing_percentage": (
+                result.total_financed / result.total_cars * 100
+                if result.total_cars > 0
+                else 0
+            ),
+            "avg_monthly_payment": (
+                float(result.avg_monthly_payment) if result.avg_monthly_payment else 0
+            ),
             "avg_down_payment": float(result.avg_down_payment) if result.avg_down_payment else 0,
             "avg_installments": float(result.avg_installments) if result.avg_installments else 0,
         }
     except Exception as e:
         logger.error(f"Error getting financing stats: {str(e)}")
-        raise HTTPException(status_code=500, detail="Error retrieving financing statistics") 
+        raise HTTPException(status_code=500, detail="Error retrieving financing statistics")
