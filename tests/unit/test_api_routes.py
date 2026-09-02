@@ -47,7 +47,7 @@ def test_critical_orm_types_constraints_and_indexes_match_sql_contract():
     assert isinstance(Car.id.type, BigInteger)
     assert isinstance(Car.original_id.type, Text)
     assert isinstance(Car.posting_date.type, Date)
-    assert Car.has_installments.nullable is True
+    assert Car.has_installments.nullable is False
     assert str(Car.has_installments.server_default.arg) == "false"
 
     indexes = {index.name: index for index in Car.__table__.indexes}
