@@ -14,7 +14,7 @@ from uuid import uuid4
 
 import pandas as pd
 import pytest
-from sqlalchemy import create_engine, func, select, text
+from sqlalchemy import create_engine, func, inspect, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 
@@ -228,5 +228,33 @@ def test_postgresql_unique_constraint_rejects_duplicate_original_id(postgres_ses
             session.flush()
         session.rollback()
         assert session.scalar(select(func.count()).select_from(Car)) == 1
+    finally:
+        session.close()
+
+
+def test_orm_creates_critical_postgresql_types_and_foreign_key(postgres_sessions):
+    session = postgres_sessions()
+    try:
+        schema = inspect(session.get_bind())
+        car_columns = {column["name"]: column for column in schema.get_columns("cars")}
+        market_columns = {
+            column["name"]: column for column in schema.get_columns("market_stats")
+        }
+        history_columns = {
+            column["name"]: column for column in schema.get_columns("price_history")
+        }
+
+        assert str(car_columns["id"]["type"]) == "BIGINT"
+        assert str(car_columns["posting_date"]["type"]) == "DATE"
+        assert car_columns["has_installments"]["nullable"] is True
+        assert str(market_columns["days_listed"]["type"]) == "INTEGER"
+        assert market_columns["calculated_at"]["type"].timezone is True
+        assert str(history_columns["car_id"]["type"]) == "BIGINT"
+        assert history_columns["car_id"]["nullable"] is False
+
+        foreign_key = schema.get_foreign_keys("price_history")[0]
+        assert foreign_key["referred_table"] == "cars"
+        assert foreign_key["referred_columns"] == ["id"]
+        assert foreign_key["options"]["ondelete"] == "CASCADE"
     finally:
         session.close()

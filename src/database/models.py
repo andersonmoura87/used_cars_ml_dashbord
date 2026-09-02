@@ -1,79 +1,143 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Index
-from sqlalchemy.ext.declarative import declarative_base
+"""Modelos SQLAlchemy canônicos compartilhados por ETL e API."""
+
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    Column,
+    Date,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    Text,
+    text,
+)
+from sqlalchemy.orm import declarative_base
 from sqlalchemy.sql import func
 
 Base = declarative_base()
 
-class Car(Base):
-    """Modelo para a tabela de carros."""
-    __tablename__ = 'cars'
 
-    id = Column(Integer, primary_key=True)
-    manufacturer = Column(String(100), index=True)
-    model = Column(String(200), index=True)
-    year = Column(Integer, index=True)
-    price = Column(Float, index=True)
+def _bigint_identity_type():
+    """Mantém BIGINT no PostgreSQL e autoincremento compatível no SQLite."""
+    return BigInteger().with_variant(Integer, "sqlite")
+
+
+class Car(Base):
+    __tablename__ = "cars"
+
+    id = Column(_bigint_identity_type(), primary_key=True)
+    original_id = Column(Text)
+    url = Column(Text)
+    region = Column(Text)
+    manufacturer = Column(Text)
+    model = Column(Text)
+    year = Column(Integer)
+    price = Column(Float)
     price_original = Column(Float)
     odometer = Column(Float)
-    fuel = Column(String(50))
-    transmission = Column(String(50))
-    drive = Column(String(50))
-    type = Column(String(50))
-    paint_color = Column(String(50))
-    condition = Column(String(50))
-    state = Column(String(50), index=True)
+    fuel = Column(Text)
+    transmission = Column(Text)
+    drive = Column(Text)
+    type = Column(Text)
+    paint_color = Column(Text)
+    condition = Column(Text)
+    cylinders = Column(Text)
+    title_status = Column(Text)
+    vin = Column(Text)
+    size = Column(Text)
+    state = Column(Text)
     latitude = Column(Float)
     longitude = Column(Float)
-    posting_date = Column(DateTime, index=True)
+    posting_date = Column(Date)
     vehicle_age = Column(Integer)
+    has_installments = Column(Boolean, server_default=text("false"))
+    monthly_payment = Column(Float)
+    down_payment = Column(Float)
+    installments = Column(Integer)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, onupdate=func.now())
 
-    # Índices compostos para consultas comuns
     __table_args__ = (
-        Index('idx_manufacturer_model_year', 'manufacturer', 'model', 'year'),
-        Index('idx_price_year_odometer', 'price', 'year', 'odometer'),
-        Index('idx_location', 'state', 'latitude', 'longitude')
+        Index(
+            "uq_cars_original_id",
+            "original_id",
+            unique=True,
+            postgresql_where=text("original_id IS NOT NULL"),
+        ),
+        Index("idx_cars_manufacturer", "manufacturer"),
+        Index("idx_cars_state", "state"),
+        Index("idx_cars_year", "year"),
+        Index("idx_cars_price", "price"),
     )
 
+
 class MarketStats(Base):
-    """Modelo para estatísticas de mercado."""
-    __tablename__ = 'market_stats'
+    __tablename__ = "market_stats"
 
     id = Column(Integer, primary_key=True)
-    manufacturer = Column(String(100))
-    model = Column(String(200))
+    manufacturer = Column(Text)
+    model = Column(Text)
     year = Column(Integer)
     avg_price = Column(Float)
     median_price = Column(Float)
     min_price = Column(Float)
     max_price = Column(Float)
     total_listings = Column(Integer)
-    avg_days_listed = Column(Float)
-    state = Column(String(50))
-    calculated_at = Column(DateTime, server_default=func.now())
+    avg_days_listed = Column("days_listed", Integer)
+    state = Column(Text)
+    calculated_at = Column(DateTime(timezone=True))
 
     __table_args__ = (
-        Index('idx_market_stats_main', 'manufacturer', 'model', 'year'),
-        Index('idx_market_stats_date', 'calculated_at')
+        Index("uq_market_stats_main", "manufacturer", "model", "year", unique=True),
+        Index("idx_market_stats_date", "calculated_at"),
     )
+
+
+class _AggregateColumns:
+    id = Column(Integer, primary_key=True)
+    total_listings = Column(Integer)
+    avg_price = Column(Float)
+    min_price = Column(Float)
+    max_price = Column(Float)
+    total_financed = Column(Integer)
+    avg_monthly_payment = Column(Float)
+    avg_down_payment = Column(Float)
+    avg_installments = Column(Float)
+
+
+class ManufacturerStats(_AggregateColumns, Base):
+    __tablename__ = "manufacturer_stats"
+    manufacturer = Column(Text, unique=True)
+    avg_year = Column(Float)
+
+
+class StateStats(_AggregateColumns, Base):
+    __tablename__ = "state_stats"
+    state = Column(Text, unique=True)
+
+
+class YearStats(_AggregateColumns, Base):
+    __tablename__ = "year_stats"
+    year = Column(Integer, unique=True)
+
 
 class PriceHistory(Base):
-    """Modelo para histórico de preços."""
-    __tablename__ = 'price_history'
+    __tablename__ = "price_history"
 
-    id = Column(Integer, primary_key=True)
-    car_id = Column(Integer, ForeignKey('cars.id', ondelete='CASCADE'))
-    price = Column(Float)
-    recorded_at = Column(DateTime, server_default=func.now())
-    
-    __table_args__ = (
-        Index('idx_car_price_date', 'car_id', 'price', 'recorded_at'),
+    id = Column(_bigint_identity_type(), primary_key=True)
+    car_id = Column(
+        _bigint_identity_type(),
+        ForeignKey("cars.id", ondelete="CASCADE"),
+        nullable=False,
     )
+    price = Column(Float)
+    recorded_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (Index("idx_car_price_date", "car_id", "price", "recorded_at"),)
+
 
 def create_tables(engine):
-    """Cria todas as tabelas no banco de dados."""
-    # Primeiro, remove todas as tabelas existentes
-    Base.metadata.drop_all(engine)
-    # Depois, cria todas as tabelas na ordem correta
-    Base.metadata.create_all(engine) 
+    """Cria estruturas ausentes sem apagar dados existentes."""
+    Base.metadata.create_all(engine)
