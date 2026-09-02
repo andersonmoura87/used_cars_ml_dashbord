@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -25,11 +26,18 @@ from scripts.quality_trend import (
 )
 
 
-def _entry(suite: str, pass_rate: float, success: bool = True, ts: str = "20260716_120000") -> dict:
+def _entry(
+    suite: str,
+    pass_rate: float,
+    success: bool = True,
+    days_ago: int = 0,
+) -> dict:
+    dt = datetime.now(timezone.utc) - timedelta(days=days_ago)
+
     return {
         "suite": suite,
-        "timestamp": ts,
-        "evaluated_at": f"2026-07-16T12:00:00+00:00",
+        "timestamp": dt.strftime("%Y%m%d_%H%M%S"),
+        "evaluated_at": dt.isoformat(),
         "success": success,
         "evaluated": 10,
         "successful": int(pass_rate * 10),
@@ -100,7 +108,9 @@ class TestBuildTrend:
             _entry("clean_cars_suite", 1.0),
         ]
         trend = build_trend(entries, [], days=30)
-        assert trend["status"] in ("healthy", "no_data") or trend["overview"]["alert_count"] == 0
+
+        assert trend["status"] == "healthy"
+        assert trend["overview"]["alert_count"] == 0
         assert "raw_cars_suite" in trend["suites"]
         assert trend["suites"]["raw_cars_suite"]["avg_pass_rate"] == 1.0
 
@@ -111,15 +121,17 @@ class TestBuildTrend:
         assert len(trend["alerts"]) >= 1
 
     def test_trend_delta_degradation(self):
-        # 4 pontos: primeiros bons, últimos ruins
         entries = [
-            {**_entry("raw_cars_suite", 1.0), "evaluated_at": "2026-07-01T00:00:00+00:00"},
-            {**_entry("raw_cars_suite", 1.0), "evaluated_at": "2026-07-02T00:00:00+00:00"},
-            {**_entry("raw_cars_suite", 0.5), "evaluated_at": "2026-07-03T00:00:00+00:00"},
-            {**_entry("raw_cars_suite", 0.5), "evaluated_at": "2026-07-04T00:00:00+00:00"},
+            _entry("raw_cars_suite", 1.0, days_ago=4),
+            _entry("raw_cars_suite", 1.0, days_ago=3),
+            _entry("raw_cars_suite", 0.5, days_ago=2),
+            _entry("raw_cars_suite", 0.5, days_ago=1),
         ]
+
         trend = build_trend(entries, [], days=90)
+
         delta = trend["suites"]["raw_cars_suite"]["trend_delta"]
+
         assert delta < 0
         assert any("Degradação" in a for a in trend["alerts"])
 
