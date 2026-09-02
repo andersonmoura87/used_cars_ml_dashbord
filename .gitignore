@@ -167,3 +167,7 @@ site/
 # ── Apresentações (artefatos não-código) ──────────────────────────────────────
 presentation/*.pptx
 presentation/*.pbix
+
+# Data Quality generated artifacts
+data/quality/ge_summary_*.json
+data/quality/quality_history.jsonl
