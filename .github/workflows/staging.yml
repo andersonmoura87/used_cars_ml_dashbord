@@ -46,7 +46,7 @@ jobs:
       IMAGE_NAME: ${{ github.repository_owner }}/used-cars-ml
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Docker meta
         id: meta
@@ -121,7 +121,7 @@ jobs:
 
       # ── Smoke tests ───────────────────────────────────────────────────────────
       - name: Set up Python for smoke tests
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: "3.11"
           cache: pip
